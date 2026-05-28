@@ -32,6 +32,7 @@
 #include "ChatWindow.h"
 #include "ClientUI.h"
 #include "Corpse.h"
+#include "DebugMenuView.h"
 #include "GameProperties.h"
 #include "LimboView.h"
 #include "MapView.h"
@@ -122,6 +123,12 @@ SPADES_SETTING(cg_hideHud);
 
 DEFINE_SPADES_SETTING(cg_keyToggleLeftHand, "c");
 SPADES_SETTING(cg_viewWeaponSide);
+DEFINE_SPADES_SETTING(cg_keyToggleFog, "i");
+SPADES_SETTING(cg_disableFogVisual);
+DEFINE_SPADES_SETTING(cg_keyToggleNoclip, "p");
+DEFINE_SPADES_SETTING(cg_adsZoomMin, "1.0");
+DEFINE_SPADES_SETTING(cg_adsZoomMax, "2.5");
+DEFINE_SPADES_SETTING(cg_adsZoomStep, "0.3");
 
 namespace spades {
 	namespace client {
@@ -138,6 +145,8 @@ namespace spades {
 				return true; // now loading.
 			if (IsLimboViewActive())
 				return true;
+			if (IsDebugMenuOpen())
+				return true;
 
 			return false;
 		}
@@ -147,6 +156,11 @@ namespace spades {
 
 			if (scriptedUI->NeedsInput()) {
 				scriptedUI->MouseEvent(x, y);
+				return;
+			}
+
+			if (IsDebugMenuOpen()) {
+				debugMenu->MouseEvent(x, y);
 				return;
 			}
 
@@ -291,6 +305,15 @@ namespace spades {
 				return;
 			}
 
+			if (IsDebugMenuOpen()) {
+				if (y > 0.5F) {
+					debugMenu->KeyEvent("WheelDown", true);
+				} else if (y < -0.5F) {
+					debugMenu->KeyEvent("WheelUp", true);
+				}
+				return;
+			}
+
 			if (y > 0.5F) {
 				KeyEvent("WheelDown", true);
 				KeyEvent("WheelDown", false);
@@ -357,6 +380,27 @@ namespace spades {
 		void Client::KeyEvent(const std::string& name, bool down) {
 			SPADES_MARK_FUNCTION();
 
+			if (name == "Delete" && down) {
+				debugMenuOpen = !debugMenuOpen;
+				playerInput = PlayerInput();
+				weapInput = WeaponInput();
+				keypadInput = KeypadInput();
+				reloadKeyPressed = false;
+
+				if (world) {
+					if (stmp::optional<Player&> maybeLocal = world->GetLocalPlayer()) {
+						Player& localPlayer = maybeLocal.value();
+						localPlayer.SetInput(PlayerInput());
+						localPlayer.SetWeaponInput(WeaponInput());
+						localPlayer.SetBlockCursorDragging(false);
+					}
+				}
+
+				ShowAlert(debugMenuOpen ? "Debug visual menu opened" : "Debug visual menu closed",
+				          AlertType::Notice);
+				return;
+			}
+
 			if (scriptedUI->NeedsInput()) {
 				if (!scriptedUI->IsIgnored(name)) {
 					scriptedUI->KeyEvent(name, down);
@@ -364,6 +408,16 @@ namespace spades {
 					if (!down)
 						scriptedUI->SetIgnored("");
 				}
+				return;
+			}
+
+			if (IsDebugMenuOpen()) {
+				if (name == "Escape" && down) {
+					CloseDebugMenu();
+					ShowAlert("Debug visual menu closed", AlertType::Notice);
+					return;
+				}
+				debugMenu->KeyEvent(name, down);
 				return;
 			}
 
@@ -381,6 +435,36 @@ namespace spades {
 					}
 				}
 			} else if (world) {
+				if (CheckKey(cg_keyToggleNoclip, name) && down) {
+					noclipEnabled = !noclipEnabled;
+					playerInput = PlayerInput();
+					weapInput = WeaponInput();
+					keypadInput = KeypadInput();
+					reloadKeyPressed = false;
+
+					if (stmp::optional<Player&> maybeLocal = world->GetLocalPlayer()) {
+						Player& localPlayer = maybeLocal.value();
+						localPlayer.SetInput(PlayerInput());
+						localPlayer.SetWeaponInput(WeaponInput());
+						localPlayer.SetBlockCursorDragging(false);
+					}
+
+					if (noclipEnabled) {
+						freeCameraState.position = lastSceneDef.viewOrigin;
+						freeCameraState.velocity = MakeVector3(0.0F, 0.0F, 0.0F);
+
+						Vector3 o = -lastSceneDef.viewAxis[2];
+						followAndFreeCameraState.yaw = atan2f(o.y, o.x);
+						followAndFreeCameraState.pitch = -atan2f(o.z, o.GetLength2D());
+						followCameraState.enabled = false;
+					}
+
+					ShowAlert(noclipEnabled ? "Noclip enabled" : "Noclip disabled", AlertType::Notice);
+					Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Player/Flashlight.opus");
+					audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
+					return;
+				}
+
 				// volume control
 				if ((CheckKey(cg_keyVolumeDown, name) || CheckKey(cg_keyVolumeUp, name)) && down) {
 					int volume = s_volume;
@@ -664,7 +748,8 @@ namespace spades {
 
 				bool localPlayerIsAlive = p.IsAlive();
 				bool localPlayerIsSpectator = p.IsSpectator();
-				bool localPlayerIsSpectating = localPlayerIsSpectator || staffSpectating;
+				bool localPlayerIsSpectating =
+				  localPlayerIsSpectator || staffSpectating || noclipEnabled;
 				bool isStaff = activeNet->GetGameProperties()->isStaff;
 
 				// Pie menu: hold to open, release to commit.
@@ -716,7 +801,7 @@ namespace spades {
 					case ClientCameraMode::FirstPersonFollow:
 					case ClientCameraMode::ThirdPersonFollow:
 					case ClientCameraMode::Free: {
-						if (CheckKey(cg_keyAttack, name)) {
+						if (!noclipEnabled && CheckKey(cg_keyAttack, name)) {
 							if (down) {
 								// reset zoom
 								if (spectatorZoom) {
@@ -732,7 +817,7 @@ namespace spades {
 									FollowNextPlayer(false);
 							}
 							return;
-						} else if (CheckKey(cg_keyAltAttack, name)) {
+						} else if (!noclipEnabled && CheckKey(cg_keyAltAttack, name)) {
 							if (down) {
 								// reset zoom
 								if (spectatorZoom) {
@@ -748,12 +833,13 @@ namespace spades {
 									FollowNextPlayer(true);
 							}
 							return;
-						} else if (CheckKey(cg_keyJump, name) && cameraMode != ClientCameraMode::Free) {
+						} else if (!noclipEnabled && CheckKey(cg_keyJump, name) &&
+						           cameraMode != ClientCameraMode::Free) {
 							auto maybeTarget = world->GetPlayer(GetCameraTargetPlayerId());
 							if (down && maybeTarget && maybeTarget->IsAlive())
 								followCameraState.firstPerson = !followCameraState.firstPerson;
 							return;
-						} else if (CheckKey(cg_keyReloadWeapon, name)
+						} else if (!noclipEnabled && CheckKey(cg_keyReloadWeapon, name)
 							&& localPlayerIsSpectating && followCameraState.enabled) {
 							if (down) {
 								// reset jump
@@ -978,6 +1064,14 @@ namespace spades {
 						  audioDevice->RegisterSound("Sounds/Misc/OpenMap.opus");
 						audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
 					}
+				} else if (CheckKey(cg_keyToggleFog, name) && down) {
+					cg_disableFogVisual = cg_disableFogVisual ? 0 : 1;
+					ShowAlert(_Tr("Client", "Fog visual: {0}",
+						cg_disableFogVisual ? "OFF" : "ON"), AlertType::Notice);
+
+					Handle<IAudioChunk> c =
+					  audioDevice->RegisterSound("Sounds/Player/Flashlight.opus");
+					audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
 				} else if (CheckKey(cg_keyStaffSpectating, name) && down && isStaff) {
 					staffSpectating = !staffSpectating;
 
@@ -1027,6 +1121,27 @@ namespace spades {
 				} else if (CheckKey(cg_keyAutoFocus, name) && down && cg_manualFocus) {
 					autoFocusEnabled = true;
 				} else if ((name == "WheelUp" || name == "WheelDown") && down) {
+					// While aiming down sights with a weapon, wheel controls ADS zoom only.
+					if (!localPlayerIsSpectator && localPlayerIsAlive && p.IsToolWeapon() &&
+					    p.GetWeaponInput().secondary) {
+						float minScale = cg_adsZoomMin;
+						float maxScale = cg_adsZoomMax;
+						float step = cg_adsZoomStep;
+
+						if (!(minScale > 0.01F))
+							minScale = 1.0F;
+						if (!(maxScale >= minScale))
+							maxScale = minScale;
+						if (!(step > 0.0F))
+							step = 0.05F;
+
+						if (name == "WheelUp")
+							adsZoomScale = std::min(adsZoomScale + step, maxScale);
+						else
+							adsZoomScale = std::max(adsZoomScale - step, minScale);
+						return;
+					}
+
 					// When DoF control is enabled,
 					// tool switch is overrided by focal length control.
 					bool rev = (int)cg_switchToolByWheel > 0;

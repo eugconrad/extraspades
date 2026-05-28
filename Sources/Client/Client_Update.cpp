@@ -21,6 +21,8 @@
 
 #include "Client.h"
 
+#include <algorithm>
+
 #include <Core/ConcurrentDispatch.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
@@ -31,6 +33,7 @@
 #include "BloodMarks.h"
 #include "CenterMessageView.h"
 #include "ChatWindow.h"
+#include "BulletTrailLog.h"
 #include "ClientPlayer.h"
 #include "ClientUI.h"
 #include "Corpse.h"
@@ -58,12 +61,21 @@ DEFINE_SPADES_SETTING(cg_respawnSoundGain, "1");
 DEFINE_SPADES_SETTING(cg_killSounds, "0");
 DEFINE_SPADES_SETTING(cg_killSoundsPitch, "1");
 DEFINE_SPADES_SETTING(cg_killSoundsGain, "0.2");
+DEFINE_SPADES_SETTING(cg_customKillSounds, "0");
+DEFINE_SPADES_SETTING(cg_customKillSoundsGain, "1.0");
+DEFINE_SPADES_SETTING(cg_customMultiKillWindow, "8.0");
 DEFINE_SPADES_SETTING(cg_tracers, "1");
+DEFINE_SPADES_SETTING(cg_tracersFirstPerson, "1");
+DEFINE_SPADES_SETTING(cg_tracersPerPlayerMax, "5");
+DEFINE_SPADES_SETTING(cg_trailLogsPerPlayerMax, "10");
+DEFINE_SPADES_SETTING(cg_trailLogLifetime, "5");
+DEFINE_SPADES_SETTING(cg_trailLogs, "1");
 DEFINE_SPADES_SETTING(cg_hitLog, "0");
 DEFINE_SPADES_SETTING(cg_killfeedIcons, "1");
 DEFINE_SPADES_SETTING(cg_killfeedStreaks, "1");
 DEFINE_SPADES_SETTING(cg_classicSprinting, "0");
 DEFINE_SPADES_SETTING(cg_spectatorNoclip, "0");
+SPADES_SETTING(cg_adsZoomMin);
 
 SPADES_SETTING(cg_smallFont);
 SPADES_SETTING(cg_centerMessage);
@@ -236,11 +248,16 @@ namespace spades {
 					spectatorZoom = false;
 				}
 
-				if (localPlayerIsSpectator) {
+				if (noclipEnabled) {
+					UpdateLocalSpectator(dt);
+				} else if (localPlayerIsSpectator) {
 					UpdateLocalSpectator(dt);
 				} else if (localPlayerIsAlive) {
 					UpdateLocalPlayer(dt);
 				} else { // update dead
+					// Keep the free camera active while waiting for respawn.
+					UpdateLocalSpectator(dt);
+
 					int count = (int)roundf(player.GetTimeToRespawn());
 					if (count != lastRespawnCount) {
 						if (count > 0 && count <= 3) {
@@ -302,6 +319,24 @@ namespace spades {
 			} else if (IsDemoMode()) {
 				// In demo mode with no local player, still update spectator camera
 				UpdateLocalSpectator(dt);
+			}
+
+			{
+				float minScale = cg_adsZoomMin;
+				if (!(minScale > 0.01F))
+					minScale = 1.0F;
+
+				bool adsActive = false;
+				if (maybePlayer) {
+					Player& player = maybePlayer.value();
+					adsActive = player.IsAlive() && !player.IsSpectator() && player.IsToolWeapon() &&
+					            player.GetWeaponInput().secondary;
+				}
+
+				if (adsZoomActiveLastFrame && !adsActive)
+					adsZoomScale = minScale;
+
+				adsZoomActiveLastFrame = adsActive;
 			}
 
 			// Check if demo is paused - freeze game objects but allow camera movement
@@ -428,6 +463,45 @@ namespace spades {
 				return;
 
 			auto& freeState = freeCameraState;
+			auto& sharedState = followAndFreeCameraState;
+
+			if (noclipEnabled) {
+				// Local debug noclip movement:
+				// - no inertia/smoothing
+				// - W/S: forward/backward on horizontal plane only
+				// - A/D: strafe left/right on horizontal plane only
+				// - Space/Ctrl: vertical movement only
+				Vector3 up = {0.0F, 0.0F, -1.0F};
+				Vector3 front = {-cosf(sharedState.yaw), -sinf(sharedState.yaw), 0.0F};
+				Vector3 right = -Vector3::Cross(up, front).Normalize();
+
+				Vector3 move = {0.0F, 0.0F, 0.0F};
+				if (playerInput.moveForward)
+					move += front;
+				if (playerInput.moveBackward)
+					move -= front;
+				if (playerInput.moveLeft)
+					move -= right;
+				if (playerInput.moveRight)
+					move += right;
+				if (playerInput.jump)
+					move += up;
+				if (playerInput.crouch)
+					move -= up;
+
+				float speed = 32.0F;
+				if (playerInput.sprint)
+					speed *= 3.0F;
+				else if (playerInput.sneak)
+					speed *= 0.5F;
+
+				if (move.GetSquaredLength() > 0.0F)
+					move = move.Normalize() * speed;
+
+				freeState.velocity = move;
+				freeState.position += move * dt;
+				return;
+			}
 
 			Vector3 lastPos = freeState.position;
 			freeState.velocity *= powf(0.3F, dt);
@@ -447,8 +521,8 @@ namespace spades {
 			freeState.position = lastPos + freeState.velocity * dt;
 
 			// check collision
-			if (!cg_spectatorNoclip) {
-				GameMap::RayCastResult minResult{};
+			if (!cg_spectatorNoclip && !noclipEnabled) {
+				GameMap::RayCastResult minResult;
 				float minDist = 1.0E+10F;
 				Vector3 minShift = MakeVector3(0.0F, 0.0F, 0.0F);
 
@@ -496,7 +570,6 @@ namespace spades {
 			Vector3 front;
 			Vector3 up = {0, 0, -1};
 
-			auto& sharedState = followAndFreeCameraState;
 			front.x = cosf(sharedState.pitch) * -cosf(sharedState.yaw);
 			front.y = cosf(sharedState.pitch) * -sinf(sharedState.yaw);
 			front.z = sinf(sharedState.pitch);
@@ -841,7 +914,7 @@ namespace spades {
 			stmp::optional<const Grenade&> g) {
 			SPADES_MARK_FUNCTION();
 
-			if (g && p.IsLocalPlayer())
+			if (g && p.IsLocalPlayer() && !noclipEnabled)
 				activeNet->SendGrenade(*g);
 
 			if (!IsMuted()) {
@@ -968,6 +1041,8 @@ namespace spades {
 				if (curStreak > bestStreak)
 					bestStreak = curStreak;
 				curStreak = 0;
+				customMultiKillCount = 0;
+				customMultiKillLastTime = -100.0F;
 			} else {
 				// play hit sound for non local player: see BullethitPlayer
 				if (!IsMuted() && (kt == KillTypeWeapon || kt == KillTypeHeadshot)) {
@@ -985,6 +1060,9 @@ namespace spades {
 
 				// register local kills
 				if (killer.IsLocalPlayer()) {
+					lastKillFlashTime = time;
+					lastKillFlashHeadshot = (kt == KillTypeHeadshot);
+
 					curKills++;
 					curStreak++;
 					if (kt == KillTypeMelee)
@@ -1002,6 +1080,45 @@ namespace spades {
 							Handle<IAudioChunk> c = killSounds[sndIndex];
 							audioDevice->PlayLocal(c.GetPointerOrNull(), param);
 						}
+					}
+
+					if (cg_customKillSounds && !IsMuted() && killerId != victimId &&
+					    !killer.IsTeammate(victim)) {
+						AudioParam param;
+						param.volume = std::max(0.0F, (float)cg_customKillSoundsGain);
+
+						Handle<IAudioChunk> actionSound;
+						switch (kt) {
+							case KillTypeHeadshot: actionSound = customHeadshotSound; break;
+							case KillTypeMelee: actionSound = customKnifeSound; break;
+							case KillTypeGrenade: actionSound = customGrenadeSound; break;
+							default: break;
+						}
+						if (actionSound)
+							audioDevice->PlayLocal(actionSound.GetPointerOrNull(), param);
+
+						float window = (float)cg_customMultiKillWindow;
+						if (!(window > 0.0F))
+							window = 8.0F;
+						if (time - customMultiKillLastTime <= window)
+							customMultiKillCount++;
+						else
+							customMultiKillCount = 1;
+						customMultiKillLastTime = time;
+
+						Handle<IAudioChunk> multiSound;
+						switch (customMultiKillCount) {
+							case 2: multiSound = customDoubleKillSound; break;
+							case 3: multiSound = customTripleKillSound; break;
+							case 4: multiSound = customMultiKillSound; break;
+							case 5: multiSound = customUltraKillSound; break;
+							default: break;
+						}
+						if (multiSound)
+							audioDevice->PlayLocal(multiSound.GetPointerOrNull(), param);
+
+						if (curStreak == 10 && customGodlikeSound)
+							audioDevice->PlayLocal(customGodlikeSound.GetPointerOrNull(), param);
 					}
 				}
 			}
@@ -1277,6 +1394,9 @@ namespace spades {
 			}
 
 			if (byLocalPlayer) {
+				if (noclipEnabled)
+					return;
+
 				activeNet->SendHit(hurtPlayer.GetId(), type);
 
 				// register bullet hits
@@ -1483,7 +1603,24 @@ namespace spades {
 			if (isFirstPerson)
 				vel *= 2.0F;
 
-			AddLocalEntity(stmp::make_unique<Tracer>(*this, muzzlePos, hitPos, vel, shotgun));
+			Vector4 tracerColor = MakeVector4(1, 1, 1, 1);
+			if (world && player.GetTeamId() < 2)
+				tracerColor = ConvertColorRGBA(world->GetTeamColor(player.GetTeamId()));
+			auto tracer = stmp::make_unique<Tracer>(*this, player.GetId(), muzzlePos, hitPos, vel,
+			                                        shotgun, tracerColor);
+			Tracer* tracerPtr = tracer.get();
+			RegisterTracer(player.GetId(), tracerPtr);
+			AddLocalEntity(std::move(tracer));
+
+			if (cg_trailLogs) {
+				float life = std::max(0.1F, (float)cg_trailLogLifetime);
+				auto trail = stmp::make_unique<BulletTrailLog>(*this, player.GetId(), muzzlePos, hitPos,
+				                                               tracerColor, life);
+				BulletTrailLog* trailPtr = trail.get();
+				RegisterTrailLog(player.GetId(), trailPtr);
+				AddLocalEntity(std::move(trail));
+			}
+
 			AddLocalEntity(stmp::make_unique<MapViewTracer>(muzzlePos, hitPos));
 		}
 
@@ -1597,10 +1734,14 @@ namespace spades {
 
 		void Client::LocalPlayerBlockAction(spades::IntVector3 v, BlockActionType type) {
 			SPADES_MARK_FUNCTION();
+			if (noclipEnabled)
+				return;
 			activeNet->SendBlockAction(v, type);
 		}
 		void Client::LocalPlayerCreatedLineBlock(spades::IntVector3 v1, spades::IntVector3 v2) {
 			SPADES_MARK_FUNCTION();
+			if (noclipEnabled)
+				return;
 			activeNet->SendBlockLine(v1, v2);
 		}
 
@@ -1634,6 +1775,67 @@ namespace spades {
 					ShowAlert(_Tr("Client", "You cannot place a block there."), AlertType::Error);
 					break;
 			}
+		}
+
+		void Client::RegisterTracer(int playerId, Tracer* tracer) {
+			if (!tracer)
+				return;
+
+			int maxPerPlayer = std::max(1, (int)cg_tracersPerPlayerMax);
+			auto& tracers = tracersByPlayer[playerId];
+			std::vector<Tracer*> pendingExpire;
+			while ((int)tracers.size() >= maxPerPlayer) {
+				Tracer* oldTracer = tracers.front();
+				tracers.pop_front();
+				if (oldTracer)
+					pendingExpire.push_back(oldTracer);
+			}
+			tracers.push_back(tracer);
+			for (Tracer* oldTracer : pendingExpire) {
+				oldTracer->ExpireNow();
+			}
+		}
+
+		void Client::UnregisterTracer(int playerId, Tracer* tracer) {
+			auto it = tracersByPlayer.find(playerId);
+			if (it == tracersByPlayer.end())
+				return;
+
+			auto& tracers = it->second;
+			tracers.erase(std::remove(tracers.begin(), tracers.end(), tracer), tracers.end());
+			if (tracers.empty())
+				tracersByPlayer.erase(it);
+		}
+
+		void Client::RegisterTrailLog(int playerId, BulletTrailLog* trailLog) {
+			if (!trailLog)
+				return;
+
+			int maxPerPlayer = std::max(1, (int)cg_trailLogsPerPlayerMax);
+			auto& trailLogs = trailLogsByPlayer[playerId];
+			std::vector<BulletTrailLog*> pendingExpire;
+			while ((int)trailLogs.size() >= maxPerPlayer) {
+				BulletTrailLog* oldTrailLog = trailLogs.front();
+				trailLogs.pop_front();
+				if (oldTrailLog)
+					pendingExpire.push_back(oldTrailLog);
+			}
+			trailLogs.push_back(trailLog);
+			for (BulletTrailLog* oldTrailLog : pendingExpire) {
+				oldTrailLog->ExpireNow();
+			}
+		}
+
+		void Client::UnregisterTrailLog(int playerId, BulletTrailLog* trailLog) {
+			auto it = trailLogsByPlayer.find(playerId);
+			if (it == trailLogsByPlayer.end())
+				return;
+
+			auto& trailLogs = it->second;
+			trailLogs.erase(std::remove(trailLogs.begin(), trailLogs.end(), trailLog),
+			                trailLogs.end());
+			if (trailLogs.empty())
+				trailLogsByPlayer.erase(it);
 		}
 	} // namespace client
 } // namespace spades

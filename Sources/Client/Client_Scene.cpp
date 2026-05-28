@@ -42,6 +42,7 @@
 #include "World.h"
 
 #include "NetClient.h"
+#include <algorithm>
 
 DEFINE_SPADES_SETTING(cg_fov, "68");
 DEFINE_SPADES_SETTING(cg_horizontalFov, "0");
@@ -53,13 +54,51 @@ DEFINE_SPADES_SETTING(cg_depthOfFieldAmount, "1");
 DEFINE_SPADES_SETTING(cg_shake, "1");
 DEFINE_SPADES_SETTING(cg_debugBlockCursor, "0");
 DEFINE_SPADES_SETTING(cg_debugPlayerHitboxes, "0");
+SPADES_SETTING(cg_disableFogVisual);
+SPADES_SETTING(cg_adsZoomMin);
+SPADES_SETTING(cg_adsZoomMax);
 
 SPADES_SETTING(cg_ragdoll);
 SPADES_SETTING(cg_hurtScreenEffects);
 SPADES_SETTING(cg_orientationSmoothing);
+DEFINE_SPADES_SETTING(cg_grenadeTrajectory, "1");
+DEFINE_SPADES_SETTING(cg_grenadeTrajectoryStep, "0.033");
+DEFINE_SPADES_SETTING(cg_grenadeTrajectoryMaxPoints, "96");
+DEFINE_SPADES_SETTING(cg_grenadeTrail, "1");
+DEFINE_SPADES_SETTING(cg_grenadeTrailPersist, "5");
+DEFINE_SPADES_SETTING(cg_grenadeTrailMaxPoints, "96");
 
 namespace spades {
 	namespace client {
+		namespace {
+			static Vector3 SimulateGrenadeStep(const Handle<GameMap>& map, Vector3 pos, Vector3& vel,
+			                                   float dt) {
+				Vector3 oldPos = pos;
+				float f = dt * 32.0F;
+				vel.z += dt;
+				pos += vel * f;
+
+				IntVector3 lp = pos.Floor();
+				IntVector3 lp2 = oldPos.Floor();
+
+				if (map->ClipWorld(lp.x, lp.y, lp.z)) {
+					if (lp.z != lp2.z &&
+					    ((lp.x == lp2.x && lp.y == lp2.y) || !map->ClipWorld(lp.x, lp.y, lp2.z)))
+						vel.z = -vel.z;
+					else if (lp.x != lp2.x &&
+					         ((lp.y == lp2.y && lp.z == lp2.z) || !map->ClipWorld(lp2.x, lp.y, lp.z)))
+						vel.x = -vel.x;
+					else if (lp.y != lp2.y &&
+					         ((lp.x == lp2.x && lp.z == lp2.z) || !map->ClipWorld(lp.x, lp2.y, lp.z)))
+						vel.y = -vel.y;
+
+					pos = oldPos;
+					vel *= 0.36F;
+				}
+
+				return pos;
+			}
+		} // namespace
 
 #pragma mark - Drawing
 
@@ -85,11 +124,19 @@ namespace spades {
 				}
 				return ClientCameraMode::NotJoined;
 			}
+			if (noclipEnabled)
+				return ClientCameraMode::Free;
 
 			Player& p = maybePlayer.value();
 
 			bool localPlayerIsSpectating = p.IsSpectator() || staffSpectating;
 			bool isStaff = activeNet->GetGameProperties()->isStaff;
+
+			// While the local player is dead (but not a spectator), switch to free camera
+			// until respawn.
+			if (!localPlayerIsSpectating && !p.IsAlive()) {
+				return ClientCameraMode::Free;
+			}
 
 			if (!localPlayerIsSpectating && p.IsAlive()) {
 				// There exists an alive (non-spectator) local player
@@ -175,7 +222,14 @@ namespace spades {
 			if (cg_classicZoom)
 				delta = 1.0F;
 
-			return 1.0F + (3.0F - 2.0F * powf(aimDownState, 1.5F)) * powf(aimDownState, 3.0F) * delta;
+			float zoom = 1.0F + (3.0F - 2.0F * powf(aimDownState, 1.5F)) * powf(aimDownState, 3.0F) * delta;
+			float minScale = cg_adsZoomMin;
+			float maxScale = cg_adsZoomMax;
+			if (!(minScale > 0.01F))
+				minScale = 1.0F;
+			if (!(maxScale >= minScale))
+				maxScale = minScale;
+			return zoom * Clamp(adsZoomScale, minScale, maxScale);
 		}
 
 		SceneDefinition Client::CreateSceneDefinition() {
@@ -196,6 +250,9 @@ namespace spades {
 			if (world) {
 				IntVector3 fogColor = world->GetFogColor();
 				renderer->SetFogColor(ConvertColorRGB(fogColor));
+				renderer->SetFogDistance(noclipEnabled ? 2000000.0F
+				                                       : (cg_disableFogVisual ? 1000000.0F
+				                                                            : FOG_DISTANCE));
 
 				int shakeLevel = cg_shake;
 
@@ -526,6 +583,7 @@ namespace spades {
 				def.skipWorld = true;
 
 				renderer->SetFogColor(MakeVector3(0, 0, 0));
+				renderer->SetFogDistance(FOG_DISTANCE);
 			}
 
 			SPAssert(!def.viewOrigin.IsNaN());
@@ -669,6 +727,51 @@ namespace spades {
 				for (const auto& nade : world->GetAllGrenades())
 					AddGrenadeToScene(*nade);
 
+				if (cg_grenadeTrail) {
+					std::vector<const Grenade*> seen;
+					int maxTrailPoints = std::max(8, (int)cg_grenadeTrailMaxPoints);
+					for (const auto& nade : world->GetAllGrenades()) {
+						const Grenade* key = nade.get();
+						seen.push_back(key);
+
+						auto& points = liveGrenadeTrails[key];
+						points.push_back(nade->GetPosition());
+						if ((int)points.size() > maxTrailPoints)
+							points.erase(points.begin(), points.begin() + ((int)points.size() - maxTrailPoints));
+
+						for (size_t i = 1; i < points.size(); ++i) {
+							float a = (float)i / (float)points.size();
+							renderer->AddDebugLine(points[i - 1], points[i], MakeVector4(1.0F, 0.6F, 0.2F, a));
+						}
+					}
+
+					float persistSecs = std::max(0.0F, (float)cg_grenadeTrailPersist);
+					for (auto it = liveGrenadeTrails.begin(); it != liveGrenadeTrails.end();) {
+						if (std::find(seen.begin(), seen.end(), it->first) == seen.end()) {
+							if (!it->second.empty() && persistSecs > 0.0F) {
+								persistedGrenadeTrails.push_back({it->second, time + persistSecs});
+							}
+							it = liveGrenadeTrails.erase(it);
+						} else {
+							++it;
+						}
+					}
+
+					for (auto it = persistedGrenadeTrails.begin(); it != persistedGrenadeTrails.end();) {
+						if (time >= it->expireTime || it->points.size() < 2) {
+							it = persistedGrenadeTrails.erase(it);
+							continue;
+						}
+						float lifeAlpha = Clamp((it->expireTime - time) / std::max(0.01F, persistSecs), 0.0F, 1.0F);
+						for (size_t i = 1; i < it->points.size(); ++i) {
+							float a = lifeAlpha * ((float)i / (float)it->points.size());
+							renderer->AddDebugLine(it->points[i - 1], it->points[i],
+							                       MakeVector4(1.0F, 0.4F, 0.15F, a));
+						}
+						++it;
+					}
+				}
+
 				for (const auto& c : corpses) {
 					if ((c->GetCenter() - lastSceneDef.viewOrigin).GetSquaredLength2D() > FOG_DISTANCE_SQ)
 						continue;
@@ -685,6 +788,37 @@ namespace spades {
 
 				if (maybePlayer) { // localplayer exists
 					Player& p = maybePlayer.value();
+
+					if (cg_grenadeTrajectory && p.IsAlive() && p.IsToolGrenade() && p.IsCookingGrenade()) {
+						float dt = Clamp((float)cg_grenadeTrajectoryStep, 0.01F, 0.1F);
+						int maxPoints = std::max(8, (int)cg_grenadeTrajectoryMaxPoints);
+						float fuse = Clamp(3.0F - p.GetGrenadeCookTime(), 0.0F, 3.0F);
+
+						Vector3 dir = p.GetFront();
+						Vector3 pos = p.GetEye() + (dir * 0.1F);
+						Vector3 vel = dir + p.GetVelocity();
+						std::vector<Vector3> pts;
+						pts.reserve((size_t)maxPoints);
+						pts.push_back(pos);
+
+						for (float t = 0.0F; t < fuse && (int)pts.size() < maxPoints; t += dt) {
+							pos = SimulateGrenadeStep(map, pos, vel, dt);
+							pts.push_back(pos);
+						}
+
+						for (size_t i = 1; i < pts.size(); ++i) {
+							float a = (float)i / (float)pts.size();
+							renderer->AddDebugLine(pts[i - 1], pts[i], MakeVector4(0.4F, 1.0F, 0.4F, a));
+						}
+						if (!pts.empty()) {
+							Vector3 end = pts.back();
+							const float m = 0.15F;
+							renderer->AddDebugLine(end + MakeVector3(-m, 0, 0), end + MakeVector3(m, 0, 0),
+							                       MakeVector4(0.3F, 1.0F, 0.3F, 0.9F));
+							renderer->AddDebugLine(end + MakeVector3(0, -m, 0), end + MakeVector3(0, m, 0),
+							                       MakeVector4(0.3F, 1.0F, 0.3F, 0.9F));
+						}
+					}
 
 					// draw block cursor
 					if (p.IsToolBlock() && p.IsReadyToUseTool() && CanLocalPlayerUseTool()) {

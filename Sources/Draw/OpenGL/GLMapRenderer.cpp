@@ -180,10 +180,12 @@ namespace spades {
 			GLProfiler::Context profiler(renderer.GetGLProfiler(), "Map");
 			const auto& viewOrigin = renderer.GetSceneDef().viewOrigin;
 
-			// draw back face to avoid cheating.
-			// without this, players can see through blocks by
-			// covering themselves by ones.
-			RenderBackface();
+			// Draw back face to avoid cheating in normal gameplay.
+			// In noclip visual override we use an extra-high fog distance sentinel
+			// and skip this pass to prevent dark mask artifacts inside blocks.
+			if (renderer.GetFogDistance() < 1500000.0F) {
+				RenderBackface();
+			}
 
 			device.ActiveTexture(0);
 			aoImage->Bind(IGLDevice::Texture2D);
