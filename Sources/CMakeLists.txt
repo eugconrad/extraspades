@@ -155,7 +155,7 @@ if(WIN32)
 		set_target_properties(
 			ZeroSpades PROPERTIES
 			LINK_FLAGS_RELEASE
-			"/NODEFAULTLIB:\"msvcrt.lib\" /NODEFAULTLIB:\"libcmtd.lib\" /NODEFAULTLIB:\"msvcrtd.lib\""
+			"/NODEFAULTLIB:\"msvcrt.lib\" /NODEFAULTLIB:\"libcmtd.lib\" /NODEFAULTLIB:\"msvcrtd.lib\" /MAP"
 		)
 	endif()
 endif()
