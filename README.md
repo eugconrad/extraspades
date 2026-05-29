@@ -35,8 +35,23 @@ Some of the most important changes are:
 * Customizable crosshair & scope.
 * Same fog tint/color as the classic client (openspades applies a [bluish tint](https://github.com/yvt/openspades/blob/v0.1.3/Resources/Shaders/Fog.vs#L27) to the fog).
 * Demo recording compatible with [aos_replay](https://github.com/BR-/aos_replay) format.
-
 -- And a lot of other things that I forgot to mention here.
+
+## ExtraSpades (separate project/fork line)
+
+ExtraSpades is a separate client line focused on gameplay tweaks and client-side visual/QoL improvements.
+It should be treated independently from both OpenSpades and ZeroSpades.
+
+Typical ExtraSpades additions include:
+
+* Client-side fog visual toggle hotkey.
+* Local debug noclip camera mode (free-fly camera without changing gameplay/network simulation).
+* ADS mouse-wheel zoom with automatic reset when leaving ADS.
+* Debug overlay menu (Delete key) for runtime tuning of custom client visual/debug features.
+* Team-colored bullet tracers and static bullet trail logs with per-player limits and fade lifetime.
+* Grenade trajectory preview while cooking/aiming and post-throw grenade trail visualization.
+* Custom kill feedback effects (screen kill fade + configurable feedback options).
+* Custom kill feedback sound event set (headshot, knife, grenade, multikill, godlike).
 
 ## Demo Recording & Playback
 
