@@ -386,7 +386,7 @@ namespace spades {
 
 		void ScoreboardView::DrawSpectators(float centerX, float top) const {
 			IFont& font = client->fontManager->GetGuiFont();
-			char buf[16];
+			char buf[32];
 			
 			static const float xPixelSpectatorOffset = 20.0F;
 			float totalPixelWidth = 0;
@@ -415,12 +415,14 @@ namespace spades {
 			if (numSpectators == 0)
 				return;
 
-			strcpy(buf, _TrN("Client", "Spectator{1}", "Spectators{1}", numSpectators, "").c_str());
+			std::string spectatorLabel =
+			  _TrN("Client", "Spectator{1}", "Spectators{1}", numSpectators, "");
 
-			auto sizeSpecString = spectatorFont->Measure(buf);
+			auto sizeSpecString = spectatorFont->Measure(spectatorLabel);
 			Vector2 pos = MakeVector2(centerX, top + 10.0F) - sizeSpecString * 0.5F;
-			spectatorFont->Draw(buf, pos + MakeVector2(1, 2), 1.0F, MakeVector4(0, 0, 0, 0.5));
-			spectatorFont->Draw(buf, pos, 1.0F, spectatorTextColor);
+			spectatorFont->Draw(spectatorLabel, pos + MakeVector2(1, 2), 1.0F,
+			                    MakeVector4(0, 0, 0, 0.5));
+			spectatorFont->Draw(spectatorLabel, pos, 1.0F, spectatorTextColor);
 
 			float currentXoffset = centerX - totalPixelWidth * 0.5F;
 			float yOffset = pos.y + sizeSpecString.y + 10.0F;

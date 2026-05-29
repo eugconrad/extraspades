@@ -18,8 +18,10 @@ DEFINE_SPADES_SETTING(cg_tracerLights, "0");
 
 namespace spades {
 	namespace client {
-		Tracer::Tracer(Client& _client, Vector3 p1, Vector3 p2, float bulletVel, bool shotgun)
-		    : client(_client), startPos(p1), velocity(bulletVel), shotgun(shotgun) {
+		Tracer::Tracer(Client& _client, int ownerPlayerId, Vector3 p1, Vector3 p2, float bulletVel,
+		               bool shotgun, Vector4 color)
+		    : client(_client), startPos(p1), velocity(bulletVel), shotgun(shotgun),
+		      ownerPlayerId(ownerPlayerId), tracerColor(color) {
 			dir = (p2 - p1).Normalize();
 			length = (p2 - p1).GetLength();
 
@@ -42,9 +44,13 @@ namespace spades {
 		}
 
 		bool Tracer::Update(float dt) {
+			age += dt;
+			if (forceExpire || age > holdTime + fadeTime)
+				return false;
+
 			if (!firstUpdate) {
 				curDistance += dt * velocity;
-				if (curDistance > length)
+				if (curDistance > length && age >= holdTime)
 					return false;
 			}
 			firstUpdate = false;
@@ -52,11 +58,17 @@ namespace spades {
 		}
 
 		void Tracer::Render3D() {
-			Vector4 col;
+			Vector4 col = tracerColor;
 			if (shotgun)
-				col = {0, 0, 0, 0.25};
-			else
-				col = {1, 0.6F, 0.2F, 0};
+				col *= 0.7F;
+
+			float alphaScale = 1.0F;
+			if (age > holdTime) {
+				float t = (age - holdTime) / fadeTime;
+				alphaScale = Clamp(1.0F - t, 0.0F, 1.0F);
+			}
+			if (alphaScale <= 0.0F)
+				return;
 
 			IRenderer& r = client.GetRenderer();
 			if (dynamic_cast<draw::SWRenderer*>(&r)) {
@@ -72,7 +84,7 @@ namespace spades {
 				Vector3 pos1 = startPos + dir * startDist;
 				Vector3 pos2 = startPos + dir * endDist;
 
-				col.w = 1.0F;
+				col.w = alphaScale;
 				r.AddDebugLine(pos1, pos2, col);
 			} else {
 				const auto& viewOrigin = client.GetLastSceneDef().viewOrigin;
@@ -96,7 +108,9 @@ namespace spades {
 					float distToViewer = (pos2 - viewOrigin).GetLength();
 					float radius = 0.002F * distToViewer;
 
-					r.SetColorAlphaPremultiplied(col * 0.4F);
+					Vector4 drawColor = col;
+					drawColor.w = alphaScale * 0.4F;
+					r.SetColorAlphaPremultiplied(drawColor);
 					r.AddLongSprite(*image, pos1, pos2, radius);
 				}
 
@@ -116,7 +130,7 @@ namespace spades {
 					DynamicLightParam light;
 					light.origin = pos1;
 					light.point2 = pos2;
-					light.color = MakeVector3(col.x, col.y, col.z) * 0.1F *
+					light.color = MakeVector3(col.x, col.y, col.z) * 0.1F * alphaScale *
 					              ((endDist - startDist) / visibleLength);
 					light.radius = 10.0F;
 					light.type = DynamicLightTypeLinear;
@@ -126,6 +140,6 @@ namespace spades {
 			}
 		}
 
-		Tracer::~Tracer() {}
+		Tracer::~Tracer() { client.UnregisterTracer(ownerPlayerId, this); }
 	} // namespace client
 } // namespace spades

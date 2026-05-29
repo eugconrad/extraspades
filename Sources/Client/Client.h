@@ -23,6 +23,7 @@
 
 #include <list>
 #include <array>
+#include <deque>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -67,6 +68,7 @@ namespace spades {
 		class MapView;
 		class ScoreboardView;
 		class LimboView;
+		class DebugMenuView;
 		class Player;
 		class PaletteView;
 		class TCProgressView;
@@ -74,16 +76,21 @@ namespace spades {
 		class BloodMarks;
 		class ClientUI;
 		class PieMenuView;
+		class Tracer;
+		class BulletTrailLog;
 
 		class Client : public IWorldListener, public gui::View {
 			friend class ScoreboardView;
 			friend class LimboView;
+			friend class DebugMenuView;
 			friend class MapView;
 			friend class FallingBlock;
 			friend class PaletteView;
 			friend class TCProgressView;
 			friend class ClientPlayer;
 			friend class ClientUI;
+			friend class Tracer;
+			friend class BulletTrailLog;
 
 			/** used to keep the input state of keypad so that
 			 * after user pressed left and right, and then
@@ -152,6 +159,7 @@ namespace spades {
 			std::unique_ptr<MapView> largeMapView;
 			std::unique_ptr<ScoreboardView> scoreboard;
 			std::unique_ptr<LimboView> limbo;
+			std::unique_ptr<DebugMenuView> debugMenu;
 			std::unique_ptr<PaletteView> paletteView;
 			std::unique_ptr<TCProgressView> tcView;
 			Handle<IImage> debugHitTestImage;
@@ -175,6 +183,8 @@ namespace spades {
 			float lastOriSentTime;
 			float lastHurtTime;
 			float lastHealTime;
+			float lastKillFlashTime;
+			bool lastKillFlashHeadshot;
 			float lastAliveTime;
 			int lastRespawnCount;
 			float lastHitTime;
@@ -185,11 +195,21 @@ namespace spades {
 			int curDeaths;
 			int curStreak;
 			int bestStreak;
+			int customMultiKillCount;
+			float customMultiKillLastTime;
 			int meleeKills;
 			int grenadeKills;
 			int placedBlocks;
 
 			std::unordered_map<int, std::unordered_map<int, int>> killStreaks;
+			std::unordered_map<int, std::deque<Tracer*>> tracersByPlayer;
+			std::unordered_map<int, std::deque<BulletTrailLog*>> trailLogsByPlayer;
+			std::unordered_map<const Grenade*, std::vector<Vector3>> liveGrenadeTrails;
+			struct PersistedGrenadeTrail {
+				std::vector<Vector3> points;
+				float expireTime;
+			};
+			std::vector<PersistedGrenadeTrail> persistedGrenadeTrails;
 
 			struct WeaponStats {
 				std::array<int, 3> hits, shots;
@@ -206,6 +226,7 @@ namespace spades {
 			float worldSetTime;
 
 			bool reloadKeyPressed;
+			bool noclipEnabled = false;
 
 			struct HurtSprite {
 				float angle;
@@ -254,6 +275,7 @@ namespace spades {
 			stmp::optional<ClientPlayer&> GetLocalClientPlayer();
 
 			void SetSelectedTool(Player::ToolType, bool quiet = false);
+			bool IsNoclipEnabled() const { return noclipEnabled; }
 
 			// view
 			SceneDefinition lastSceneDef;
@@ -283,6 +305,8 @@ namespace spades {
 
 			float spectatorZoomState;
 			bool spectatorZoom;
+			float adsZoomScale;
+			bool adsZoomActiveLastFrame;
 
 			// manual focus
 			float focalLength;
@@ -375,9 +399,12 @@ namespace spades {
 			void CaptureColor();
 
 			bool inGameLimbo;
+			bool debugMenuOpen;
 			bool HasLocalPlayer();
 			bool IsLimboViewActive();
+			bool IsDebugMenuOpen() const { return debugMenuOpen; }
 			void CloseLimboView();
+			void CloseDebugMenu() { debugMenuOpen = false; }
 			void SpawnPressed();
 
 			stmp::optional<std::tuple<Player&, hitTag_t>> HotTrackedPlayer();
@@ -438,7 +465,19 @@ namespace spades {
 
 			// Killsteak sounds
 			std::vector<Handle<IAudioChunk>> killSounds;
+			Handle<IAudioChunk> customHeadshotSound;
+			Handle<IAudioChunk> customKnifeSound;
+			Handle<IAudioChunk> customGrenadeSound;
+			Handle<IAudioChunk> customDoubleKillSound;
+			Handle<IAudioChunk> customTripleKillSound;
+			Handle<IAudioChunk> customMultiKillSound;
+			Handle<IAudioChunk> customUltraKillSound;
+			Handle<IAudioChunk> customGodlikeSound;
 			void LoadKillSounds();
+			void RegisterTracer(int playerId, Tracer* tracer);
+			void UnregisterTracer(int playerId, Tracer* tracer);
+			void RegisterTrailLog(int playerId, BulletTrailLog* trailLog);
+			void UnregisterTrailLog(int playerId, BulletTrailLog* trailLog);
 
 			void UpdateWorld(float dt, float gameplayDt);
 			void UpdateLocalSpectator(float dt);

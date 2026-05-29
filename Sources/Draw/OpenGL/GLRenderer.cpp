@@ -824,7 +824,7 @@ namespace spades {
 					std::swap(view, viewMatrix);
 					projectionViewMatrix = projectionMatrix * viewMatrix;
 
-					if (settings.r_fogShadow && mapShadowRenderer) {
+					if (settings.r_fogShadow && mapShadowRenderer && fogDistance < 10000.0F) {
 						GLProfiler::Context p(*profiler, "Volumetric Fog");
 
 						GLFramebufferManager::BufferHandle handle;
@@ -919,7 +919,7 @@ namespace spades {
 					handle = fbManager->StartPostProcessing();
 				}
 
-				if (settings.r_fogShadow && mapShadowRenderer) {
+				if (settings.r_fogShadow && mapShadowRenderer && fogDistance < 10000.0F) {
 					GLProfiler::Context p(*profiler, "Volumetric Fog");
 					if (settings.ShouldUseFogFilter2()) {
 						if (!fogFilter2)

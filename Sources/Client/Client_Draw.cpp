@@ -36,6 +36,7 @@
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
 #include "ClientUI.h"
+#include "DebugMenuView.h"
 #include "Fonts.h"
 #include "GameProperties.h"
 #include "HitTestDebugger.h"
@@ -97,6 +98,9 @@ DEFINE_SPADES_SETTING(cg_dbgHitTestFadeTime, "10");
 DEFINE_SPADES_SETTING(cg_damageIndicators, "1");
 DEFINE_SPADES_SETTING(cg_hurtScreenEffects, "1");
 DEFINE_SPADES_SETTING(cg_healScreenEffects, "1");
+DEFINE_SPADES_SETTING(cg_killFlash, "1");
+DEFINE_SPADES_SETTING(cg_killFlashDuration, "0.18");
+DEFINE_SPADES_SETTING(cg_killFlashAlpha, "1.0");
 
 DEFINE_SPADES_SETTING(cg_hudHotbar, "1");
 SPADES_SETTING(cg_keyToolSpade);
@@ -1735,6 +1739,26 @@ namespace spades {
 					if (cg_healScreenEffects)
 						DrawScreenEffect(false);
 
+					if (cg_killFlash) {
+						float elapsed = time - lastKillFlashTime;
+						float duration = cg_killFlashDuration;
+						float baseAlpha = cg_killFlashAlpha;
+						if (!(duration > 0.02F))
+							duration = 0.18F;
+						baseAlpha = Clamp(baseAlpha, 0.0F, 1.0F);
+						if (elapsed >= 0.0F && elapsed < duration) {
+							float t = 1.0F - (elapsed / duration);
+							t = Clamp(t, 0.0F, 1.0F);
+
+							Vector4 flashColor = lastKillFlashHeadshot
+								? MakeVector4(1.0F, 0.95F, 0.75F, 1.0F)
+								: MakeVector4(1.0F, 1.0F, 1.0F, 1.0F);
+							float alpha = baseAlpha * t;
+							renderer->SetColorAlphaPremultiplied(flashColor * alpha);
+							renderer->DrawImage(nullptr, AABB2(0, 0, sw, sh));
+						}
+					}
+
 					if (cg_playerNames)
 						DrawHottrackedPlayerName();
 
@@ -1854,6 +1878,9 @@ namespace spades {
 			// draw limbo view (above everything)
 			if (IsLimboViewActive() && !scriptedUI->NeedsInput())
 				limbo->Draw();
+
+			if (IsDebugMenuOpen())
+				debugMenu->Draw();
 		}
 
 		void Client::Draw2DWithoutWorld() {

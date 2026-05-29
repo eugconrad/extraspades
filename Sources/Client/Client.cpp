@@ -39,6 +39,7 @@
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
 #include "ClientUI.h"
+#include "DebugMenuView.h"
 #include "HurtRingView.h"
 #include "LimboView.h"
 #include "MapView.h"
@@ -86,52 +87,57 @@ namespace spades {
 			  time(0.0F),
 			  readyToClose(false),
 
-			  worldSubFrame(0.0F),
-			  worldSubFrameFast(0.0F),
-			  frameToRendererInit(5),
-			  timeSinceInit(0.0F),
-			  hasLastTool(false),
-			  lastPosSentTime(0.0F),
-			  lastOriSentTime(0.0F),
-			  lastAliveTime(0.0F),
-			  lastRespawnCount(0),
-			  damageTaken(0),
-			  lastScore(0),
-			  curKills(0),
-			  curDeaths(0),
-			  curStreak(0),
-			  bestStreak(0),
-			  meleeKills(0),
-			  grenadeKills(0),
-			  placedBlocks(0),
-			  reloadKeyPressed(false),
-			  localFireVibrationTime(-1.0F),
-			  grenadeVibration(0.0F),
-			  grenadeVibrationSlow(0.0F),
-			  scoreboardVisible(false),
-			  hudVisible(true),
-			  flashlightOn(false),
+		      worldSubFrame(0.0F),
+		      worldSubFrameFast(0.0F),
+		      frameToRendererInit(5),
+		      timeSinceInit(0.0F),
+		      hasLastTool(false),
+		      lastPosSentTime(0.0F),
+		      lastOriSentTime(0.0F),
+		      lastAliveTime(0.0F),
+		      lastRespawnCount(0),
+		      damageTaken(0),
+		      lastScore(0),
+		      curKills(0),
+		      curDeaths(0),
+		      curStreak(0),
+		      bestStreak(0),
+		      customMultiKillCount(0),
+		      customMultiKillLastTime(-100.0F),
+		      meleeKills(0),
+		      grenadeKills(0),
+		      placedBlocks(0),
+		      localFireVibrationTime(-1.0F),
+		      grenadeVibration(0.0F),
+		      grenadeVibrationSlow(0.0F),
+		      reloadKeyPressed(false),
+		      scoreboardVisible(false),
+		      hudVisible(true),
+		      flashlightOn(false),
 			  isChristmasOn(false),
 			  lastSnowDropTime(0.0F),
-			  hotBarIconState(0.0F),
-			  hitFeedbackIconState(0.0F),
-			  hitFeedbackFriendly(false),
-			  debugHitTestZoomState(0.0F),
-			  debugHitTestZoom(false),
-			  spectatorZoomState(0.0F),
-			  spectatorZoom(false),
-			  focalLength(20.0F),
-			  targetFocalLength(20.0F),
-			  autoFocusEnabled(true),
+		      hotBarIconState(0.0F),
+		      hitFeedbackIconState(0.0F),
+		      hitFeedbackFriendly(false),
+		      debugHitTestZoomState(0.0F),
+		      debugHitTestZoom(false),
+		      spectatorZoomState(0.0F),
+		      spectatorZoom(false),
+		      adsZoomScale(1.0F),
+		      adsZoomActiveLastFrame(false),
+		      spectatorPlayerNames(true),
+		      staffSpectating(false),
+		      focalLength(20.0F),
+		      targetFocalLength(20.0F),
+		      autoFocusEnabled(true),
 			  followedPlayerId(0),
-			  inGameLimbo(false),
-			  fontManager(fontManager),
-			  alertDisappearTime(-10000.0F),
-			  lastLocalCorpse(nullptr),
-			  nextScreenShotIndex(0),
-			  nextMapShotIndex(0),
-			  staffSpectating(false),
-			  spectatorPlayerNames(true) {
+		      inGameLimbo(false),
+		      debugMenuOpen(false),
+		      fontManager(fontManager),
+		      alertDisappearTime(-10000.0F),
+		      lastLocalCorpse(nullptr),
+		      nextScreenShotIndex(0),
+		      nextMapShotIndex(0) {
 			SPADES_MARK_FUNCTION();
 			SPLog("Initializing...");
 
@@ -150,6 +156,7 @@ namespace spades {
 			largeMapView = stmp::make_unique<MapView>(this, true);
 			scoreboard = stmp::make_unique<ScoreboardView>(this);
 			limbo = stmp::make_unique<LimboView>(this);
+			debugMenu = stmp::make_unique<DebugMenuView>(this);
 			paletteView = stmp::make_unique<PaletteView>(this);
 			pieMenuView = stmp::make_unique<PieMenuView>(this, chatFont,
 				&fontManager->GetHeadingFont());
@@ -174,9 +181,13 @@ namespace spades {
 			damageTaken = 0;
 			lastHurtTime = -100.0F;
 			lastHealTime = -100.0F;
+			lastKillFlashTime = -100.0F;
+			lastKillFlashHeadshot = false;
 			lastHitTime = -100.0F;
 			hurtRingView->ClearAll();
 			killStreaks.clear();
+			customMultiKillCount = 0;
+			customMultiKillLastTime = -100.0F;
 
 			// reset on new map
 			placedBlocks = 0;
@@ -185,14 +196,21 @@ namespace spades {
 			// preserve the staff/ESP toggle across seeks.
 			if (!IsDemoMode())
 				staffSpectating = false;
+			noclipEnabled = false;
 			reloadKeyPressed = false;
 			scoreboardVisible = false;
 			flashlightOn = false;
 			debugHitTestZoom = false;
 			spectatorZoom = false;
+			adsZoomScale = 1.0F;
+			adsZoomActiveLastFrame = false;
 			largeMapView->SetZoom(false);
 
 			clientPlayers.clear();
+			tracersByPlayer.clear();
+			trailLogsByPlayer.clear();
+			liveGrenadeTrails.clear();
+			persistedGrenadeTrails.clear();
 
 			if (world) {
 				world->SetListener(nullptr);
@@ -229,6 +247,7 @@ namespace spades {
 			limbo->SetSelectedTeam(2);
 			limbo->SetSelectedWeapon(RIFLE_WEAPON);
 			inGameLimbo = false;
+			debugMenuOpen = false;
 
 			worldSubFrame = 0.0F;
 			worldSubFrameFast = 0.0F;
@@ -304,6 +323,7 @@ namespace spades {
 			scriptedUI->ClientDestroyed();
 			tcView.reset();
 			limbo.reset();
+			debugMenu.reset();
 			scoreboard.reset();
 			mapView.reset();
 			largeMapView.reset();
@@ -725,6 +745,7 @@ namespace spades {
 			chatWindow->Update(dt);
 			killfeedWindow->Update(dt);
 			limbo->Update(dt);
+			debugMenu->Update(dt);
 
 			// The loading screen
 			NetClientStatus currentStatus = activeNet->GetStatus();
@@ -886,6 +907,28 @@ namespace spades {
 			int soundsNum = static_cast<int>(killSounds.size());
 			if (soundsNum > 0)
 				SPLog("Loaded %d killstreak sounds", soundsNum);
+
+			auto registerOptionalCustomSound = [&](const char* baseName) -> Handle<IAudioChunk> {
+				std::string wavPath = std::string("Sounds/Feedback/CustomKill/") + baseName + ".wav";
+				if (FileManager::FileExists(wavPath.c_str()))
+					return audioDevice->RegisterSound(wavPath.c_str());
+
+				std::string opusPath = std::string("Sounds/Feedback/CustomKill/") + baseName + ".opus";
+				if (FileManager::FileExists(opusPath.c_str()))
+					return audioDevice->RegisterSound(opusPath.c_str());
+
+				SPLog("CustomKill sound not found: %s(.wav/.opus)", baseName);
+				return Handle<IAudioChunk>{};
+			};
+
+			customHeadshotSound = registerOptionalCustomSound("headshot");
+			customKnifeSound = registerOptionalCustomSound("knife");
+			customGrenadeSound = registerOptionalCustomSound("grenade");
+			customDoubleKillSound = registerOptionalCustomSound("doublekill");
+			customTripleKillSound = registerOptionalCustomSound("triplekill");
+			customMultiKillSound = registerOptionalCustomSound("multikill");
+			customUltraKillSound = registerOptionalCustomSound("ultrakill");
+			customGodlikeSound = registerOptionalCustomSound("godlike");
 		}
 
 		/** Records chat message/game events to the log file. */
