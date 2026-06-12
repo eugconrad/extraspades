@@ -654,8 +654,16 @@ namespace spades {
 				}
 			}
 
+			bool grenadeImpactSwitch =
+			  player.IsToolGrenade() && player.GetWeaponInput().primary && winp.secondary;
+
 			player.SetInput(inp);
 			player.SetWeaponInput(winp);
+
+			if (grenadeImpactSwitch) {
+				winp = WeaponInput();
+				weapInput = WeaponInput();
+			}
 
 			PlayerInput actualInput = player.GetInput();
 			WeaponInput actualWeapInput = player.GetWeaponInput();
@@ -667,6 +675,13 @@ namespace spades {
 			{
 				PlayerInput sentInput = inp;
 				WeaponInput sentWeaponInput = winp;
+
+				if (player.IsToolGrenade() && sentWeaponInput.secondary) {
+					// ExtraSpades tactical grenade hook: keep RMB impact-ready local,
+					// but expose normal grenade cooking to the server/other clients.
+					sentWeaponInput.primary = true;
+					sentWeaponInput.secondary = false;
+				}
 
 				activeNet->SendPlayerInput(sentInput);
 				activeNet->SendWeaponInput(sentWeaponInput);

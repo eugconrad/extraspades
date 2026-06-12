@@ -39,6 +39,30 @@ DEFINE_SPADES_SETTING(cg_classicWeaponRecoil, "1");
 
 namespace spades {
 	namespace client {
+		namespace {
+			constexpr float kGrenadeMaxFuse = 3.0F;
+
+			bool EstimateGrenadeImpactFuse(const Handle<GameMap>& map, Vector3 pos, Vector3 vel,
+			                               float& outFuse) {
+				if (!map)
+					return false;
+
+				constexpr float dt = 1.0F / 96.0F;
+				for (float t = 0.0F; t < kGrenadeMaxFuse; t += dt) {
+					float step = std::min(dt, kGrenadeMaxFuse - t);
+					vel.z += step;
+					pos += vel * (step * 32.0F);
+
+					IntVector3 block = pos.Floor();
+					if (map->ClipWorld(block.x, block.y, block.z)) {
+						outFuse = t + step;
+						return true;
+					}
+				}
+
+				return false;
+			}
+		} // namespace
 
 		Player::Player(World& w, int pId, WeaponType wType, int tId) : world(w) {
 			SPADES_MARK_FUNCTION();
@@ -144,16 +168,42 @@ namespace spades {
 					}
 				}
 			} else if (tool == ToolGrenade && isLocal) {
-				if (world.GetTime() < nextGrenadeTime)
+				if (world.GetTime() < nextGrenadeTime) {
 					newInput.primary = false;
-				if (grenades <= 0)
+					newInput.secondary = false;
+				}
+				if (grenades <= 0) {
 					newInput.primary = false;
+					newInput.secondary = false;
+				}
+
+				if (newInput.secondary && weapInput.primary && cookingGrenade) {
+					// ExtraSpades tactical grenade hook: RMB can convert an already
+					// cooked LMB throw into an impact-ready release.
+					ThrowImpactGrenade();
+					newInput.primary = false;
+					newInput.secondary = false;
+					weapInput = newInput;
+					return;
+				}
+
+				if (newInput.primary)
+					newInput.secondary = false;
 
 				if (newInput.primary != weapInput.primary) {
 					if (newInput.primary) {
 						CookGrenade();
 					} else {
 						ThrowGrenade();
+					}
+				}
+				if (newInput.secondary != weapInput.secondary) {
+					if (newInput.secondary) {
+						CookGrenade();
+					} else {
+						// ExtraSpades tactical grenade hook: RMB releases an impact-ready
+						// grenade while keeping the standard GrenadePacket layout intact.
+						ThrowImpactGrenade();
 					}
 				}
 			} else if (tool == ToolBlock && isLocal) {
@@ -464,7 +514,7 @@ namespace spades {
 				if (weapInput.primary && world.GetTime() > nextBlockTime)
 					nextBlockTime = world.GetTime() + primaryDelay;
 			} else if (tool == ToolGrenade) {
-				if (GetGrenadeCookTime() >= 3.0F)
+				if (!isLocal && GetGrenadeCookTime() >= kGrenadeMaxFuse)
 					ThrowGrenade();
 
 				if (!isLocal) {
@@ -874,7 +924,7 @@ namespace spades {
 				Vector3 const muzzle = GetEye() + (dir * 0.1F);
 				Vector3 const vel = alive ? (dir + GetVelocity()) : Vector3(0, 0, 0);
 
-				float const fuse = 3.0F - GetGrenadeCookTime();
+				float const fuse = kGrenadeMaxFuse;
 
 				auto nade = stmp::make_unique<Grenade>(world, muzzle, vel, fuse);
 				if (world.GetListener())
@@ -884,6 +934,36 @@ namespace spades {
 					grenades--;
 			} else {
 				// grenade packet will be sent by server
+				if (world.GetListener())
+					world.GetListener()->PlayerThrewGrenade(*this, {});
+			}
+
+			cookingGrenade = false;
+			nextGrenadeTime = world.GetTime() + GetToolPrimaryDelay(tool);
+		}
+
+		void Player::ThrowImpactGrenade() {
+			SPADES_MARK_FUNCTION();
+
+			if (!cookingGrenade)
+				return;
+
+			if (IsLocalPlayer()) {
+				Vector3 const dir = GetFront();
+				Vector3 const muzzle = GetEye() + (dir * 0.1F);
+				Vector3 const vel = alive ? (dir + GetVelocity()) : Vector3(0, 0, 0);
+
+				float fuse = kGrenadeMaxFuse;
+				EstimateGrenadeImpactFuse(world.GetMap(), muzzle, vel, fuse);
+				fuse = Clamp(fuse, 0.0F, kGrenadeMaxFuse);
+
+				auto nade = stmp::make_unique<Grenade>(world, muzzle, vel, fuse);
+				if (world.GetListener())
+					world.GetListener()->PlayerThrewGrenade(*this, *nade);
+				world.AddGrenade(std::move(nade));
+				if (grenades > 0)
+					grenades--;
+			} else {
 				if (world.GetListener())
 					world.GetListener()->PlayerThrewGrenade(*this, {});
 			}

@@ -141,6 +141,7 @@ namespace spades {
 
 			void CookGrenade();
 			void ThrowGrenade();
+			void ThrowImpactGrenade();
 
 		public:
 			Player(World&, int pId, WeaponType wType, int tId);
