@@ -22,6 +22,7 @@
 #include <Core/RefCountedObject.h>
 #include <Core/Settings.h>
 #include <Core/ThreadLocalStorage.h>
+#include <Imports/SDL.h>
 #include <unordered_map>
 
 namespace spades {
@@ -115,6 +116,31 @@ namespace spades {
 			return array;
 		}
 
+		static CScriptArray* GetGamepadList() {
+			auto* ctx = asGetActiveContext();
+			auto* engine = ctx->GetEngine();
+			auto* arrayType = engine->GetTypeInfoByDecl("array<string>");
+			auto* array = CScriptArray::Create(arrayType);
+
+			if ((SDL_WasInit(SDL_INIT_GAMECONTROLLER) & SDL_INIT_GAMECONTROLLER) == 0)
+				SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+
+			std::vector<std::string> items;
+			items.emplace_back("Auto");
+			int count = SDL_NumJoysticks();
+			for (int i = 0; i < count; ++i) {
+				if (!SDL_IsGameController(i))
+					continue;
+				const char* name = SDL_GameControllerNameForIndex(i);
+				items.emplace_back("[" + std::to_string(i) + "] " + (name ? name : "Unknown Gamepad"));
+			}
+
+			array->Resize(static_cast<asUINT>(items.size()));
+			for (std::size_t i = 0; i < items.size(); i++)
+				reinterpret_cast<std::string*>(array->At(static_cast<asUINT>(i)))->assign(items[i]);
+			return array;
+		}
+
 		virtual void Register(ScriptManager* manager, Phase phase) {
 			asIScriptEngine* eng = manager->GetEngine();
 			int r;
@@ -196,6 +222,9 @@ namespace spades {
 
 					r = eng->RegisterGlobalFunction("array<string>@ GetAllConfigNames()",
 					                                asFUNCTION(GetAllConfigNames), asCALL_CDECL);
+					manager->CheckError(r);
+					r = eng->RegisterGlobalFunction("array<string>@ GetGamepadList()",
+					                                asFUNCTION(GetGamepadList), asCALL_CDECL);
 					manager->CheckError(r);
 					break;
 				default: break;

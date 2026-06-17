@@ -19,6 +19,7 @@
  */
 
 #include "UIFramework/UIFramework.as"
+#include "UIFramework/DropDownList.as"
 #include "MessageBox.as"
 #include "MainScreen/MainScreenUI.as"
 #include "StartupScreen/StartupScreenUI.as"

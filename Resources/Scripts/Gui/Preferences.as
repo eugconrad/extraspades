@@ -805,6 +805,84 @@ namespace spades {
 		}
 	}
 
+	class ConfigGamepadSelector : spades::ui::SimpleButton {
+		ConfigItem@ config;
+		string[] items;
+
+		ConfigGamepadSelector(spades::ui::UIManager@ manager, string configName) {
+			super(manager);
+			@config = ConfigItem(configName);
+			Alignment = Vector2(0.0F, 0.5F);
+			UpdateCaption();
+			@Activated = spades::ui::EventHandler(this.ShowDropdown);
+		}
+
+		private string IndexFromItem(string item) {
+			if (item.length < 3 or item.substr(0, 1) != "[")
+				return "";
+			int close = item.findFirst("]");
+			if (close <= 1)
+				return "";
+			return item.substr(1, close - 1);
+		}
+
+		private bool ItemMatchesConfig(string item) {
+			string value = config.StringValue;
+			if (value.length == 0)
+				return item == "Auto";
+			return IndexFromItem(item) == value;
+		}
+
+		private void RefreshItems() {
+			array<string>@ found = GetGamepadList();
+			items.resize(0);
+			for (uint i = 0; i < found.length; ++i)
+				items.insertLast(found[i]);
+			if (items.length == 0)
+				items.insertLast("Auto");
+		}
+
+		private void UpdateCaption() {
+			RefreshItems();
+			for (uint i = 0; i < items.length; ++i) {
+				if (ItemMatchesConfig(items[i])) {
+					Caption = items[i];
+					return;
+				}
+			}
+
+			string value = config.StringValue;
+			Caption = value.length == 0 ? "Auto" : "[" + value + "] " + _Tr("Preferences", "Not Connected");
+		}
+
+		private void DropdownHandler(int index) {
+			if (index < 0)
+				return;
+			if (index == 0)
+				config = "";
+			else
+				config = IndexFromItem(items[index]);
+			UpdateCaption();
+		}
+
+		private void ShowDropdown(spades::ui::UIElement@) {
+			UpdateCaption();
+			spades::ui::ShowDropDownList(this, items,
+				spades::ui::DropDownListHandler(this.DropdownHandler));
+		}
+
+		void Render() {
+			UpdateCaption();
+			SimpleButton::Render();
+
+			Renderer@ r = Manager.Renderer;
+			Image@ img = r.RegisterImage("Gfx/UI/ScrollArrow.png");
+			AABB2 bnd = ScreenBounds;
+			Vector2 p = Vector2(bnd.max.x - 20.0F, (bnd.min.y + bnd.max.y) * 0.5F + 8.0F);
+			r.DrawImage(img, AABB2(p.x, p.y, 16.0F, -16.0F));
+		}
+	}
+
 	class ConfigToggleButtonBase : spades::ui::RadioButton {
 		ConfigToggleButtonBase(spades::ui::UIManager@ manager, string caption) {
 			super(manager);
@@ -1373,6 +1451,15 @@ namespace spades {
 			hotkeyItems.insertLast(field);
 		}
 
+		void AddGamepadSelector(string caption, string configName, bool enabled = true) {
+			spades::ui::UIElement@ container = CreateBasicLabel(caption, enabled);
+
+			ConfigGamepadSelector field(Parent.Manager, configName);
+			field.Bounds = AABB2(FieldX, 2.0F, FieldWidth, 28.0F);
+			field.Enable = enabled;
+			container.AddChild(field);
+		}
+
 		void AddChoiceField(string caption, string configName,
 			array<string>@ labels, array<int>@ values, bool enabled = true) {
 			spades::ui::UIElement@ container = CreateBasicLabel(caption, enabled);
@@ -1936,7 +2023,7 @@ namespace spades {
 
 			layouter.AddHeading(_Tr("Preferences", "Gamepad"));
 			layouter.AddToggleField(_Tr("Preferences", "Enable Gamepad"), "cg_gamepadEnabled");
-			layouter.AddInputField(_Tr("Preferences", "Preferred Gamepad"), "cg_gamepadPreferredController");
+			layouter.AddGamepadSelector(_Tr("Preferences", "Preferred Gamepad"), "cg_gamepadPreferredController");
 			layouter.AddToggleField(_Tr("Preferences", "Gamepad Vibration"), "cg_gamepadVibration");
 			layouter.AddToggleField(_Tr("Preferences", "Invert Gamepad Look Y"), "cg_gamepadInvertY");
 			layouter.AddChoiceField(_Tr("Preferences", "Gamepad Response Curve"), "cg_gamepadResponseCurve",

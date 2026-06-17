@@ -19,7 +19,6 @@
  */
 
 #include "ConfigViewFramework.as"
-#include "../UIFramework/DropDownList.as"
 #include "../MessageBox.as"
 
 namespace spades {
