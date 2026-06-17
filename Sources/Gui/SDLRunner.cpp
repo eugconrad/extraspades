@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <unordered_map>
@@ -55,6 +56,7 @@ DEFINE_SPADES_SETTING(s_audioDriver, "openal");
 DEFINE_SPADES_SETTING(cl_fps, "0");
 
 DEFINE_SPADES_SETTING(cg_gamepadEnabled, "1");
+DEFINE_SPADES_SETTING(cg_gamepadPreferredController, "");
 DEFINE_SPADES_SETTING(cg_gamepadInvertY, "0");
 DEFINE_SPADES_SETTING(cg_gamepadSensitivity, "1");
 DEFINE_SPADES_SETTING(cg_gamepadSensitivityX, "1");
@@ -89,10 +91,12 @@ namespace spades {
 		struct SDLRunner::GamepadState {
 			SDL_GameController* controller = nullptr;
 			SDL_JoystickID instanceId = -1;
+			int joystickIndex = -1;
 			std::array<Sint16, SDL_CONTROLLER_AXIS_MAX> axes;
 			std::unordered_map<std::string, bool> emittedActions;
 			std::unordered_map<std::string, bool> virtualButtons;
 			std::unordered_map<std::string, bool> uiVirtualButtons;
+			std::string lastMissingPreference;
 
 			GamepadState() { axes.fill(0); }
 		};
@@ -149,6 +153,39 @@ namespace spades {
 
 		static bool MatchesGamepadControl(Settings::ItemHandle& setting, const std::string& control) {
 			return EqualsIgnoringCase((std::string)setting, control);
+		}
+
+		static std::string LowerAscii(std::string value) {
+			std::transform(value.begin(), value.end(), value.begin(),
+			               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return value;
+		}
+
+		static bool ParseGamepadIndexPreference(const std::string& value, int& index) {
+			if (value.empty())
+				return false;
+			for (char c : value) {
+				if (!std::isdigit(static_cast<unsigned char>(c)))
+					return false;
+			}
+			index = std::atoi(value.c_str());
+			return true;
+		}
+
+		static bool MatchesPreferredGamepad(int joystickIndex, const char* controllerName) {
+			std::string preferred = (std::string)cg_gamepadPreferredController;
+			if (preferred.empty())
+				return true;
+
+			int preferredIndex = -1;
+			if (ParseGamepadIndexPreference(preferred, preferredIndex))
+				return joystickIndex == preferredIndex;
+
+			std::string name = controllerName ? controllerName : "";
+			std::string nameLower = LowerAscii(name);
+			std::string preferredLower = LowerAscii(preferred);
+			return nameLower == preferredLower ||
+			       nameLower.find(preferredLower) != std::string::npos;
 		}
 
 		static float NormalizeControllerAxis(Sint16 value) {
@@ -266,6 +303,7 @@ namespace spades {
 				SDL_GameControllerClose(gamepadState->controller);
 				gamepadState->controller = nullptr;
 				gamepadState->instanceId = -1;
+				gamepadState->joystickIndex = -1;
 			}
 			gamepadState->axes.fill(0);
 			gamepadState->virtualButtons.clear();
@@ -280,6 +318,9 @@ namespace spades {
 			for (int i = 0; i < count; ++i) {
 				if (!SDL_IsGameController(i))
 					continue;
+				const char* name = SDL_GameControllerNameForIndex(i);
+				if (!MatchesPreferredGamepad(i, name))
+					continue;
 				SDL_GameController* controller = SDL_GameControllerOpen(i);
 				if (!controller) {
 					SPLog("Failed to open gamepad %d: %s", i, SDL_GetError());
@@ -289,8 +330,17 @@ namespace spades {
 				SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
 				gamepadState->controller = controller;
 				gamepadState->instanceId = joystick ? SDL_JoystickInstanceID(joystick) : -1;
-				SPLog("Gamepad connected: %s", SDL_GameControllerName(controller));
+				gamepadState->joystickIndex = i;
+				gamepadState->lastMissingPreference.clear();
+				SPLog("Gamepad connected [%d]: %s", i, SDL_GameControllerName(controller));
 				break;
+			}
+
+			std::string preferred = (std::string)cg_gamepadPreferredController;
+			if (!gamepadState->controller && !preferred.empty() &&
+			    gamepadState->lastMissingPreference != preferred) {
+				SPLog("Preferred gamepad not found: %s", preferred.c_str());
+				gamepadState->lastMissingPreference = preferred;
 			}
 		}
 
@@ -302,6 +352,12 @@ namespace spades {
 				ReleaseGamepadActions(*gamepadState, view);
 				CloseGameController();
 				return;
+			}
+
+			if (gamepadState->controller &&
+			    !MatchesPreferredGamepad(gamepadState->joystickIndex,
+			                             SDL_GameControllerName(gamepadState->controller))) {
+				CloseGameController(&view);
 			}
 
 			OpenFirstGameController();

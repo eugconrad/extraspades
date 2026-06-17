@@ -1837,6 +1837,7 @@ namespace spades {
 
 		private void OnResetGamepadClicked(spades::ui::UIElement@ sender) {
 			SetConfig("cg_gamepadEnabled", "1");
+			SetConfig("cg_gamepadPreferredController", "");
 			SetConfig("cg_gamepadInvertY", "0");
 			SetConfig("cg_gamepadSensitivity", "1");
 			SetConfig("cg_gamepadSensitivityX", "1");
@@ -1935,6 +1936,7 @@ namespace spades {
 
 			layouter.AddHeading(_Tr("Preferences", "Gamepad"));
 			layouter.AddToggleField(_Tr("Preferences", "Enable Gamepad"), "cg_gamepadEnabled");
+			layouter.AddInputField(_Tr("Preferences", "Preferred Gamepad"), "cg_gamepadPreferredController");
 			layouter.AddToggleField(_Tr("Preferences", "Gamepad Vibration"), "cg_gamepadVibration");
 			layouter.AddToggleField(_Tr("Preferences", "Invert Gamepad Look Y"), "cg_gamepadInvertY");
 			layouter.AddChoiceField(_Tr("Preferences", "Gamepad Response Curve"), "cg_gamepadResponseCurve",
