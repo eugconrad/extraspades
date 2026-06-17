@@ -37,6 +37,7 @@ namespace spades {
 			View() {}
 
 			virtual void MouseEvent(float x, float y) {}
+			virtual void ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {}
 			virtual void KeyEvent(const std::string&, bool down) {}
 			virtual void TextInputEvent(const std::string&) {}
 			virtual void TextEditingEvent(const std::string&, int start, int len) {}
