@@ -77,7 +77,7 @@ namespace spades {
 		class ClientUI;
 		class PieMenuView;
 		class Tracer;
-		class BulletTrailLog;
+		class BulletTrailLogManager;
 
 		class Client : public IWorldListener, public gui::View {
 			friend class ScoreboardView;
@@ -90,7 +90,7 @@ namespace spades {
 			friend class ClientPlayer;
 			friend class ClientUI;
 			friend class Tracer;
-			friend class BulletTrailLog;
+			friend class BulletTrailLogManager;
 
 			/** used to keep the input state of keypad so that
 			 * after user pressed left and right, and then
@@ -203,7 +203,7 @@ namespace spades {
 
 			std::unordered_map<int, std::unordered_map<int, int>> killStreaks;
 			std::unordered_map<int, std::deque<Tracer*>> tracersByPlayer;
-			std::unordered_map<int, std::deque<BulletTrailLog*>> trailLogsByPlayer;
+			BulletTrailLogManager* bulletTrailLogManager = nullptr;
 			std::unordered_map<const Grenade*, std::vector<Vector3>> liveGrenadeTrails;
 			struct PersistedGrenadeTrail {
 				std::vector<Vector3> points;
@@ -476,8 +476,7 @@ namespace spades {
 			void LoadKillSounds();
 			void RegisterTracer(int playerId, Tracer* tracer);
 			void UnregisterTracer(int playerId, Tracer* tracer);
-			void RegisterTrailLog(int playerId, BulletTrailLog* trailLog);
-			void UnregisterTrailLog(int playerId, BulletTrailLog* trailLog);
+			BulletTrailLogManager& EnsureBulletTrailLogManager();
 
 			void UpdateWorld(float dt, float gameplayDt);
 			void UpdateLocalSpectator(float dt);

@@ -123,6 +123,7 @@ namespace spades {
 			corpses.clear();
 
 			damageIndicators.clear();
+			bulletTrailLogManager = nullptr;
 			localEntities.clear();
 			bloodMarks->Clear();
 		}

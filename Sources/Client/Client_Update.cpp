@@ -1629,11 +1629,10 @@ namespace spades {
 
 			if (cg_trailLogs) {
 				float life = std::max(0.1F, (float)cg_trailLogLifetime);
-				auto trail = stmp::make_unique<BulletTrailLog>(*this, player.GetId(), muzzlePos, hitPos,
-				                                               tracerColor, life);
-				BulletTrailLog* trailPtr = trail.get();
-				RegisterTrailLog(player.GetId(), trailPtr);
-				AddLocalEntity(std::move(trail));
+				EnsureBulletTrailLogManager().AddTrail(player.GetId(), muzzlePos, hitPos,
+				                                        tracerColor, life,
+				                                        player.GetWeapon().GetWeaponType(),
+				                                        (int)cg_trailLogsPerPlayerMax);
 			}
 
 			AddLocalEntity(stmp::make_unique<MapViewTracer>(muzzlePos, hitPos));
@@ -1822,35 +1821,13 @@ namespace spades {
 				tracersByPlayer.erase(it);
 		}
 
-		void Client::RegisterTrailLog(int playerId, BulletTrailLog* trailLog) {
-			if (!trailLog)
-				return;
-
-			int maxPerPlayer = std::max(1, (int)cg_trailLogsPerPlayerMax);
-			auto& trailLogs = trailLogsByPlayer[playerId];
-			std::vector<BulletTrailLog*> pendingExpire;
-			while ((int)trailLogs.size() >= maxPerPlayer) {
-				BulletTrailLog* oldTrailLog = trailLogs.front();
-				trailLogs.pop_front();
-				if (oldTrailLog)
-					pendingExpire.push_back(oldTrailLog);
+		BulletTrailLogManager& Client::EnsureBulletTrailLogManager() {
+			if (!bulletTrailLogManager) {
+				auto manager = stmp::make_unique<BulletTrailLogManager>(*this);
+				bulletTrailLogManager = manager.get();
+				AddLocalEntity(std::move(manager));
 			}
-			trailLogs.push_back(trailLog);
-			for (BulletTrailLog* oldTrailLog : pendingExpire) {
-				oldTrailLog->ExpireNow();
-			}
-		}
-
-		void Client::UnregisterTrailLog(int playerId, BulletTrailLog* trailLog) {
-			auto it = trailLogsByPlayer.find(playerId);
-			if (it == trailLogsByPlayer.end())
-				return;
-
-			auto& trailLogs = it->second;
-			trailLogs.erase(std::remove(trailLogs.begin(), trailLogs.end(), trailLog),
-			                trailLogs.end());
-			if (trailLogs.empty())
-				trailLogsByPlayer.erase(it);
+			return *bulletTrailLogManager;
 		}
 	} // namespace client
 } // namespace spades

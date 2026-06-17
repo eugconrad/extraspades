@@ -208,7 +208,7 @@ namespace spades {
 
 			clientPlayers.clear();
 			tracersByPlayer.clear();
-			trailLogsByPlayer.clear();
+			bulletTrailLogManager = nullptr;
 			liveGrenadeTrails.clear();
 			persistedGrenadeTrails.clear();
 
