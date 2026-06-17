@@ -366,7 +366,7 @@ namespace spades {
 			const float margin = 8.0F;
 			float minimapY = margin;
 			const int statsMode = cg_stats;
-			if (statsMode == 2 || (statsMode >= 3 && scoreboardVisible))
+			if (statsMode == 2 || (statsMode >= 3 && IsScoreboardVisible()))
 				minimapY += cg_statsSmallFont ? 10.0F : 20.0F;
 			float minimapSize = Clamp((float)cg_minimapSize, 32.0F, 256.0F);
 			// Align with the minimap top, placed to its left
@@ -384,7 +384,7 @@ namespace spades {
 			float y = 8.0F;
 
 			const int statsMode = cg_stats;
-			if (statsMode == 2 || (statsMode >= 3 && scoreboardVisible))
+			if (statsMode == 2 || (statsMode >= 3 && IsScoreboardVisible()))
 				y += cg_statsSmallFont ? 10.0F : 20.0F;
 
 			int now = (int)time;
@@ -419,12 +419,12 @@ namespace spades {
 			float x = sw * 0.5F;
 			float y = 8.0F;
 
-			if (playerCountMode < 2 && scoreboardVisible)
+			if (playerCountMode < 2 && IsScoreboardVisible())
 				y += 30.0F;
 
 			const int statsMode = cg_stats;
 			if ((playerCountMode >= 2 && statsMode == 1) ||
-				(playerCountMode < 2 && (statsMode == 2 || (statsMode >= 3 && scoreboardVisible))))
+				(playerCountMode < 2 && (statsMode == 2 || (statsMode >= 3 && IsScoreboardVisible()))))
 				y += cg_statsSmallFont ? 10.0F : 20.0F;
 
 			float teamBarY = (playerCountMode < 2) ? y : ((sh - y) - teamBarH);
@@ -1814,7 +1814,7 @@ namespace spades {
 
 				DrawAlert();
 				centerMessageView->Draw();
-				if (scoreboardVisible) {
+				if (IsScoreboardVisible()) {
 					scoreboard->Draw();
 					DrawPlayingTime();
 				}
@@ -1861,7 +1861,7 @@ namespace spades {
 				}
 
 				// In demo mode, only show scoreboard when toggled
-				if (!IsDemoMode() || scoreboardVisible) {
+				if (!IsDemoMode() || IsScoreboardVisible()) {
 					scoreboard->Draw();
 					DrawPlayingTime();
 				}
@@ -1938,7 +1938,7 @@ namespace spades {
 
 			// only draw stats when scoreboard is visible
 			const int statsMode = cg_stats;
-			if (statsMode >= 3 && !scoreboardVisible)
+			if (statsMode >= 3 && !IsScoreboardVisible())
 				return;
 
 			float sw = renderer->ScreenWidth();

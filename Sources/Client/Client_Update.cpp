@@ -236,14 +236,18 @@ namespace spades {
 					// don't reset player input if chat is open
 					if (!AcceptsTextInput()) {
 						weapInput.secondary = false;
+						gamepadWeapInput = WeaponInput();
 						playerInput = PlayerInput();
+						gamepadPlayerInput = PlayerInput();
 						largeMapView->SetZoom(false);
 						chatWindow->SetExpanded(false);
 						scoreboardVisible = false;
+						gamepadScoreboardVisible = false;
 					}
 
 					// reset all "delayed actions"
 					reloadKeyPressed = false;
+					gamepadReloadKeyPressed = false;
 					debugHitTestZoom = false;
 					spectatorZoom = false;
 				}
@@ -613,7 +617,18 @@ namespace spades {
 			Weapon& weapon = player.GetWeapon();
 
 			PlayerInput inp = playerInput;
+			inp.moveForward = inp.moveForward || gamepadPlayerInput.moveForward;
+			inp.moveBackward = inp.moveBackward || gamepadPlayerInput.moveBackward;
+			inp.moveLeft = inp.moveLeft || gamepadPlayerInput.moveLeft;
+			inp.moveRight = inp.moveRight || gamepadPlayerInput.moveRight;
+			inp.jump = inp.jump || gamepadPlayerInput.jump;
+			inp.crouch = inp.crouch || gamepadPlayerInput.crouch;
+			inp.sneak = inp.sneak || gamepadPlayerInput.sneak;
+			inp.sprint = inp.sprint || gamepadPlayerInput.sprint;
+
 			WeaponInput winp = weapInput;
+			winp.primary = winp.primary || gamepadWeapInput.primary;
+			winp.secondary = winp.secondary || gamepadWeapInput.secondary;
 
 			// suppress weapon input while pie menu is held
 			if (pieMenuView && pieMenuView->IsOpen())
@@ -688,7 +703,8 @@ namespace spades {
 			}
 
 			// send weapon reload
-			if (isToolWeapon && CanLocalPlayerReloadWeapon() && reloadKeyPressed) {
+			if (isToolWeapon && CanLocalPlayerReloadWeapon() &&
+			    (reloadKeyPressed || gamepadReloadKeyPressed)) {
 				// disable zoom while reloading (except for shotgun)
 				if (winp.secondary && !isWeaponShotgun) {
 					winp.secondary = false;

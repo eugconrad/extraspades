@@ -173,7 +173,9 @@ namespace spades {
 
 			// player state
 			PlayerInput playerInput;
+			PlayerInput gamepadPlayerInput;
 			WeaponInput weapInput;
+			WeaponInput gamepadWeapInput;
 			KeypadInput keypadInput;
 			Player::ToolType lastTool;
 			bool hasLastTool;
@@ -226,6 +228,8 @@ namespace spades {
 			float worldSetTime;
 
 			bool reloadKeyPressed;
+			bool gamepadReloadKeyPressed = false;
+			bool gamepadScoreboardVisible = false;
 			bool noclipEnabled = false;
 
 			struct HurtSprite {
@@ -546,6 +550,7 @@ namespace spades {
 			void TakeMapShot();
 
 			void NetLog(const char* format, ...);
+			bool HandleGamepadAction(const std::string&, bool down);
 
 		protected:
 			~Client();
@@ -564,6 +569,7 @@ namespace spades {
 
 			void Closing() override;
 			void MouseEvent(float x, float y) override;
+			void ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) override;
 			void WheelEvent(float x, float y) override;
 			void KeyEvent(const std::string&, bool down) override;
 			void TextInputEvent(const std::string&) override;
@@ -605,7 +611,7 @@ namespace spades {
 
 			bool WantsToBeClosed() override;
 			bool IsMuted();
-			bool IsScoreboardVisible() { return scoreboardVisible; }
+			bool IsScoreboardVisible() { return scoreboardVisible || gamepadScoreboardVisible; }
 
 			void PlayerSentChatMessage(Player&, bool global, const std::string&);
 			void ServerSentMessage(bool system, const std::string&);

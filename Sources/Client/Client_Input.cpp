@@ -297,6 +297,27 @@ namespace spades {
 			}
 		}
 
+		void Client::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
+			SPADES_MARK_FUNCTION();
+
+			if (NeedsAbsoluteMouseCoordinate()) {
+				gamepadPlayerInput.moveForward = false;
+				gamepadPlayerInput.moveBackward = false;
+				gamepadPlayerInput.moveLeft = false;
+				gamepadPlayerInput.moveRight = false;
+				return;
+			}
+
+			const float moveThreshold = 0.35F;
+			gamepadPlayerInput.moveLeft = moveX < -moveThreshold;
+			gamepadPlayerInput.moveRight = moveX > moveThreshold;
+			gamepadPlayerInput.moveForward = moveY < -moveThreshold;
+			gamepadPlayerInput.moveBackward = moveY > moveThreshold;
+
+			if (lookX != 0.0F || lookY != 0.0F)
+				MouseEvent(lookX, lookY);
+		}
+
 		void Client::WheelEvent(float x, float y) {
 			SPADES_MARK_FUNCTION();
 
@@ -377,8 +398,124 @@ namespace spades {
 			return false;
 		}
 
+		bool Client::HandleGamepadAction(const std::string& name, bool down) {
+			if (name.compare(0, 13, "GamepadAction") != 0)
+				return false;
+
+			if (name == "GamepadActionFire") {
+				gamepadWeapInput.primary = down;
+				if (down && world) {
+					if (stmp::optional<Player&> maybePlayer = world->GetLocalPlayer()) {
+						Player& p = maybePlayer.value();
+						if (p.IsToolWeapon() && !CanLocalPlayerUseWeapon())
+							PlayerDryFiredWeapon(p);
+					}
+				}
+				return true;
+			}
+
+			if (name == "GamepadActionAim") {
+				bool lastVal = gamepadWeapInput.secondary || weapInput.secondary;
+				gamepadWeapInput.secondary = down;
+
+				if (down && world) {
+					if (stmp::optional<Player&> maybePlayer = world->GetLocalPlayer()) {
+						Player& p = maybePlayer.value();
+						if (p.IsToolWeapon() && !lastVal && CanLocalPlayerUseWeapon()) {
+							AudioParam param;
+							param.volume = 0.08F;
+							Handle<IAudioChunk> c =
+							  audioDevice->RegisterSound("Sounds/Weapons/AimDownSightLocal.opus");
+							audioDevice->PlayLocal(c.GetPointerOrNull(),
+								MakeVector3(0.4F, -0.3F, 0.5F), param);
+						}
+					}
+				}
+				return true;
+			}
+
+			if (name == "GamepadActionJump") {
+				gamepadPlayerInput.jump = down;
+				return true;
+			}
+			if (name == "GamepadActionCrouch") {
+				gamepadPlayerInput.crouch = down;
+				return true;
+			}
+			if (name == "GamepadActionReload") {
+				gamepadReloadKeyPressed = down;
+				return true;
+			}
+			if (name == "GamepadActionScoreboard") {
+				gamepadScoreboardVisible = down;
+				return true;
+			}
+			if (name == "GamepadActionMenu") {
+				if (down)
+					KeyEvent("Escape", true);
+				return true;
+			}
+
+			if (!down || !world)
+				return true;
+
+			stmp::optional<Player&> maybePlayer = world->GetLocalPlayer();
+			if (!maybePlayer)
+				return true;
+
+			Player& p = maybePlayer.value();
+			bool localPlayerIsAlive = p.IsAlive();
+			bool localPlayerIsSpectator = p.IsSpectator();
+			if (localPlayerIsSpectator || !localPlayerIsAlive)
+				return true;
+
+			auto selectTool = [&](Player::ToolType tool, const char* unavailable) {
+				if (p.IsToolSelectable(tool))
+					SetSelectedTool(tool);
+				else
+					ShowAlert(_Tr("Client", unavailable), AlertType::Error);
+			};
+
+			if (name == "GamepadActionToolSpade") {
+				SetSelectedTool(Player::ToolSpade);
+			} else if (name == "GamepadActionToolBlock") {
+				selectTool(Player::ToolBlock, "Out of Blocks");
+			} else if (name == "GamepadActionToolWeapon") {
+				selectTool(Player::ToolWeapon, "Out of Ammo");
+			} else if (name == "GamepadActionToolGrenade") {
+				selectTool(Player::ToolGrenade, "Out of Grenades");
+			} else if (name == "GamepadActionPrevTool" || name == "GamepadActionNextTool" ||
+			           name == "GamepadActionSwitchTool") {
+				Player::ToolType t = p.GetTool();
+				bool reverse = name == "GamepadActionPrevTool";
+				do {
+					if (reverse) {
+						switch (t) {
+							case Player::ToolSpade: t = Player::ToolGrenade; break;
+							case Player::ToolBlock: t = Player::ToolSpade; break;
+							case Player::ToolWeapon: t = Player::ToolBlock; break;
+							case Player::ToolGrenade: t = Player::ToolWeapon; break;
+						}
+					} else {
+						switch (t) {
+							case Player::ToolSpade: t = Player::ToolBlock; break;
+							case Player::ToolBlock: t = Player::ToolWeapon; break;
+							case Player::ToolWeapon: t = Player::ToolGrenade; break;
+							case Player::ToolGrenade: t = Player::ToolSpade; break;
+						}
+					}
+				} while (!p.IsToolSelectable(t));
+				SetSelectedTool(t);
+			}
+
+			return true;
+		}
+
 		void Client::KeyEvent(const std::string& name, bool down) {
 			SPADES_MARK_FUNCTION();
+
+			if (HandleGamepadAction(name, down))
+				return;
 
 			if (name == "Delete" && down) {
 				debugMenuOpen = !debugMenuOpen;
