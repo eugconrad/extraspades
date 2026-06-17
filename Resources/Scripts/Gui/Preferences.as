@@ -764,6 +764,34 @@ namespace spades {
 				text = _Tr("Preferences", "Mouse Button 4");
 			} else if (text == "MouseButton5") {
 				text = _Tr("Preferences", "Mouse Button 5");
+			} else if (text == "GamepadA") {
+				text = _Tr("Preferences", "Gamepad A / Cross");
+			} else if (text == "GamepadB") {
+				text = _Tr("Preferences", "Gamepad B / Circle");
+			} else if (text == "GamepadX") {
+				text = _Tr("Preferences", "Gamepad X / Square");
+			} else if (text == "GamepadY") {
+				text = _Tr("Preferences", "Gamepad Y / Triangle");
+			} else if (text == "GamepadLeftShoulder") {
+				text = _Tr("Preferences", "Gamepad LB / L1");
+			} else if (text == "GamepadRightShoulder") {
+				text = _Tr("Preferences", "Gamepad RB / R1");
+			} else if (text == "GamepadLeftTrigger") {
+				text = _Tr("Preferences", "Gamepad LT / L2");
+			} else if (text == "GamepadRightTrigger") {
+				text = _Tr("Preferences", "Gamepad RT / R2");
+			} else if (text == "GamepadBack") {
+				text = _Tr("Preferences", "Gamepad Back / Select");
+			} else if (text == "GamepadStart") {
+				text = _Tr("Preferences", "Gamepad Start");
+			} else if (text == "GamepadDPadUp") {
+				text = _Tr("Preferences", "Gamepad D-Pad Up");
+			} else if (text == "GamepadDPadDown") {
+				text = _Tr("Preferences", "Gamepad D-Pad Down");
+			} else if (text == "GamepadDPadLeft") {
+				text = _Tr("Preferences", "Gamepad D-Pad Left");
+			} else if (text == "GamepadDPadRight") {
+				text = _Tr("Preferences", "Gamepad D-Pad Right");
 			} else if (!IsFocused) {
 				for (uint i = 0, len = text.length; i < len; i++)
 					text[i] = ToUpper(text[i]);
@@ -1802,6 +1830,41 @@ namespace spades {
 	}
 
 	class ControlOptionsPanel : spades::ui::UIElement {
+		private void SetConfig(string name, string value) {
+			ConfigItem cfg(name);
+			cfg = value;
+		}
+
+		private void OnResetGamepadClicked(spades::ui::UIElement@ sender) {
+			SetConfig("cg_gamepadEnabled", "1");
+			SetConfig("cg_gamepadInvertY", "0");
+			SetConfig("cg_gamepadSensitivity", "1");
+			SetConfig("cg_gamepadSensitivityX", "1");
+			SetConfig("cg_gamepadSensitivityY", "1");
+			SetConfig("cg_gamepadDeadzone", "0.18");
+			SetConfig("cg_gamepadTriggerThreshold", "0.45");
+			SetConfig("cg_gamepadResponseCurve", "1");
+			SetConfig("cg_gamepadVibration", "1");
+			SetConfig("cg_gamepadAxisMoveX", "LeftX");
+			SetConfig("cg_gamepadAxisMoveY", "LeftY");
+			SetConfig("cg_gamepadAxisLookX", "RightX");
+			SetConfig("cg_gamepadAxisLookY", "RightY");
+			SetConfig("cg_gamepadButtonFire", "GamepadRightTrigger");
+			SetConfig("cg_gamepadButtonAim", "GamepadLeftTrigger");
+			SetConfig("cg_gamepadButtonJump", "GamepadA");
+			SetConfig("cg_gamepadButtonCrouch", "GamepadB");
+			SetConfig("cg_gamepadButtonReload", "GamepadX");
+			SetConfig("cg_gamepadButtonSwitchTool", "GamepadY");
+			SetConfig("cg_gamepadButtonPrevTool", "GamepadLeftShoulder");
+			SetConfig("cg_gamepadButtonNextTool", "GamepadRightShoulder");
+			SetConfig("cg_gamepadButtonToolSpade", "GamepadDPadLeft");
+			SetConfig("cg_gamepadButtonToolBlock", "GamepadDPadDown");
+			SetConfig("cg_gamepadButtonToolWeapon", "GamepadDPadUp");
+			SetConfig("cg_gamepadButtonToolGrenade", "GamepadDPadRight");
+			SetConfig("cg_gamepadButtonMenu", "GamepadStart");
+			SetConfig("cg_gamepadButtonScoreboard", "GamepadBack");
+		}
+
 		ControlOptionsPanel(spades::ui::UIManager@ manager,
 			PreferenceViewOptions@ options, FontManager@ fontManager,
 			HeadingNavIndex@ nav = null) {
@@ -1869,6 +1932,45 @@ namespace spades {
 			layouter.AddControl(_Tr("Preferences", "Master Volume Down"), "cg_keyVolumeDown");
 			layouter.AddControl(_Tr("Preferences", "Force Spectator Mode"), "cg_keyStaffSpectating");
 			layouter.AddControl(_Tr("Preferences", "Toggle Demo Recording"), "cg_keyDemoRecord");
+
+			layouter.AddHeading(_Tr("Preferences", "Gamepad"));
+			layouter.AddToggleField(_Tr("Preferences", "Enable Gamepad"), "cg_gamepadEnabled");
+			layouter.AddToggleField(_Tr("Preferences", "Gamepad Vibration"), "cg_gamepadVibration");
+			layouter.AddToggleField(_Tr("Preferences", "Invert Gamepad Look Y"), "cg_gamepadInvertY");
+			layouter.AddChoiceField(_Tr("Preferences", "Gamepad Response Curve"), "cg_gamepadResponseCurve",
+									array<string> = {_Tr("Preferences", "LINEAR"),
+													 _Tr("Preferences", "EXPONENTIAL")},
+									array<int> = {0, 1});
+			layouter.AddSliderField(_Tr("Preferences", "Gamepad Sensitivity"), "cg_gamepadSensitivity",
+			0.1, 5, 0.05, ConfigNumberFormatter(2, "x"));
+			layouter.AddSliderField(_Tr("Preferences", "Gamepad X Sensitivity"), "cg_gamepadSensitivityX",
+			0.1, 5, 0.05, ConfigNumberFormatter(2, "x"));
+			layouter.AddSliderField(_Tr("Preferences", "Gamepad Y Sensitivity"), "cg_gamepadSensitivityY",
+			0.1, 5, 0.05, ConfigNumberFormatter(2, "x"));
+			layouter.AddSliderField(_Tr("Preferences", "Gamepad Stick Deadzone"), "cg_gamepadDeadzone",
+			0, 0.8, 0.01, ConfigNumberFormatter(0, "%", "", 100));
+			layouter.AddSliderField(_Tr("Preferences", "Gamepad Trigger Threshold"), "cg_gamepadTriggerThreshold",
+			0, 1, 0.01, ConfigNumberFormatter(0, "%", "", 100));
+			layouter.AddInputField(_Tr("Preferences", "Move Axis X"), "cg_gamepadAxisMoveX");
+			layouter.AddInputField(_Tr("Preferences", "Move Axis Y"), "cg_gamepadAxisMoveY");
+			layouter.AddInputField(_Tr("Preferences", "Look Axis X"), "cg_gamepadAxisLookX");
+			layouter.AddInputField(_Tr("Preferences", "Look Axis Y"), "cg_gamepadAxisLookY");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Fire"), "cg_gamepadButtonFire");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Aim / Secondary"), "cg_gamepadButtonAim");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Jump"), "cg_gamepadButtonJump");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Crouch"), "cg_gamepadButtonCrouch");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Reload"), "cg_gamepadButtonReload");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Switch Tool"), "cg_gamepadButtonSwitchTool");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Previous Tool"), "cg_gamepadButtonPrevTool");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Next Tool"), "cg_gamepadButtonNextTool");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Equip Spade"), "cg_gamepadButtonToolSpade");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Equip Block"), "cg_gamepadButtonToolBlock");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Equip Weapon"), "cg_gamepadButtonToolWeapon");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Equip Grenade"), "cg_gamepadButtonToolGrenade");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Pause/Menu"), "cg_gamepadButtonMenu");
+			layouter.AddControl(_Tr("Preferences", "Gamepad Scoreboard"), "cg_gamepadButtonScoreboard");
+			layouter.AddButtonField(_Tr("Preferences", "Gamepad Defaults"),
+				_Tr("Preferences", "Reset"), spades::ui::EventHandler(this.OnResetGamepadClicked));
 
 			layouter.FinishLayout();
 		}
