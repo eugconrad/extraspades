@@ -20,9 +20,9 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <tuple>
-#include <memory>
 
 #include <Imports/SDL.h>
 
@@ -53,12 +53,11 @@ namespace spades {
 
 			std::string TranslateKey(const SDL_Keysym&);
 			std::string TranslateButton(Uint8 b);
-			std::string TranslateControllerButton(Uint8 b);
 			virtual int GetModState();
 			void ProcessEvent(SDL_Event& event, View&);
-			void UpdateGameController(View&, float dt);
-			void CloseGameController(View* view = nullptr);
-			void OpenFirstGameController();
+			void UpdateGamepad(View&, float dt);
+			void CloseGamepad(View* view = nullptr);
+			void OpenPreferredGamepad();
 			virtual void RunClientLoop(SDL_Window*, client::IRenderer* renderer,
 			                           client::IAudioDevice* dev);
 			virtual View* CreateView(client::IRenderer* renderer, client::IAudioDevice* dev) = 0;

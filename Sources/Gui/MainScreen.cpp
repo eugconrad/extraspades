@@ -94,6 +94,12 @@ namespace spades {
 			c.ExecuteChecked();
 		}
 
+		void MainScreen::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
+			SPADES_MARK_FUNCTION();
+			if (subview)
+				subview->ControllerAxisEvent(moveX, moveY, lookX, lookY);
+		}
+
 		void MainScreen::WheelEvent(float x, float y) {
 			SPADES_MARK_FUNCTION();
 			if (subview) {

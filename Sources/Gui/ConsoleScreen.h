@@ -44,6 +44,7 @@ namespace spades {
 
 			// Implements `View`
 			void MouseEvent(float x, float y) override;
+			void ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) override;
 			void KeyEvent(const std::string&, bool down) override;
 			void TextInputEvent(const std::string&) override;
 			void TextEditingEvent(const std::string&, int start, int len) override;

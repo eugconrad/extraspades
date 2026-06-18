@@ -73,6 +73,13 @@ namespace spades {
 				return subview->MouseEvent(x, y);
 			}
 		}
+
+		void ConsoleScreen::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
+			SPADES_MARK_FUNCTION();
+			if (!ShouldInterceptInput())
+				subview->ControllerAxisEvent(moveX, moveY, lookX, lookY);
+		}
+
 		void ConsoleScreen::KeyEvent(const std::string& key, bool down) {
 			SPADES_MARK_FUNCTION();
 

@@ -26,6 +26,7 @@
 #include <cstring>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "SDLRunner.h"
 
@@ -88,22 +89,27 @@ static int lastMouseX = 0, lastMouseY = 0;
 
 namespace spades {
 	namespace gui {
+
 		struct SDLRunner::GamepadState {
 			SDL_GameController* controller = nullptr;
+			SDL_Joystick* joystick = nullptr;
+			SDL_Haptic* haptic = nullptr;
 			SDL_JoystickID instanceId = -1;
 			int joystickIndex = -1;
+			bool genericJoystick = false;
 			std::array<Sint16, SDL_CONTROLLER_AXIS_MAX> axes;
+			std::vector<Sint16> rawAxes;
 			std::unordered_map<std::string, bool> emittedActions;
+			std::unordered_map<std::string, bool> physicalButtons;
+			std::unordered_map<std::string, bool> uiAxisButtons;
 			std::unordered_map<std::string, bool> virtualButtons;
-			std::unordered_map<std::string, bool> uiVirtualButtons;
-			std::string lastMissingPreference;
 
 			GamepadState() { axes.fill(0); }
 		};
 
 		SDLRunner::SDLRunner() : m_hasSystemMenu(false), gamepadState(new GamepadState()) {}
 
-		SDLRunner::~SDLRunner() { CloseGameController(); }
+		SDLRunner::~SDLRunner() { CloseGamepad(); }
 
 		client::IAudioDevice* SDLRunner::CreateAudioDevice() {
 			if (EqualsIgnoringCase(s_audioDriver, "openal")) {
@@ -129,15 +135,13 @@ namespace spades {
 			}
 		}
 
-		std::string SDLRunner::TranslateControllerButton(Uint8 b) {
-			SPADES_MARK_FUNCTION();
+		static std::string TranslateControllerButton(Uint8 b) {
 			switch (static_cast<SDL_GameControllerButton>(b)) {
 				case SDL_CONTROLLER_BUTTON_A: return "GamepadA";
 				case SDL_CONTROLLER_BUTTON_B: return "GamepadB";
 				case SDL_CONTROLLER_BUTTON_X: return "GamepadX";
 				case SDL_CONTROLLER_BUTTON_Y: return "GamepadY";
 				case SDL_CONTROLLER_BUTTON_BACK: return "GamepadBack";
-				case SDL_CONTROLLER_BUTTON_GUIDE: return "GamepadGuide";
 				case SDL_CONTROLLER_BUTTON_START: return "GamepadStart";
 				case SDL_CONTROLLER_BUTTON_LEFTSTICK: return "GamepadLeftStick";
 				case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return "GamepadRightStick";
@@ -151,44 +155,58 @@ namespace spades {
 			}
 		}
 
+		static std::string TranslateJoystickButton(Uint8 button) {
+			switch (button) {
+				case 0: return "GamepadA";
+				case 1: return "GamepadB";
+				case 2: return "GamepadX";
+				case 3: return "GamepadY";
+				case 4: return "GamepadLeftShoulder";
+				case 5: return "GamepadRightShoulder";
+				case 6: return "GamepadBack";
+				case 7: return "GamepadStart";
+				case 8: return "GamepadLeftStick";
+				case 9: return "GamepadRightStick";
+				default: return std::string();
+			}
+		}
+
+		static std::string GetControllerAxisName(SDL_GameControllerAxis axis) {
+			switch (axis) {
+				case SDL_CONTROLLER_AXIS_LEFTX: return "LeftX";
+				case SDL_CONTROLLER_AXIS_LEFTY: return "LeftY";
+				case SDL_CONTROLLER_AXIS_RIGHTX: return "RightX";
+				case SDL_CONTROLLER_AXIS_RIGHTY: return "RightY";
+				case SDL_CONTROLLER_AXIS_TRIGGERLEFT: return "LeftTrigger";
+				case SDL_CONTROLLER_AXIS_TRIGGERRIGHT: return "RightTrigger";
+				default: return std::string();
+			}
+		}
+
 		static bool MatchesGamepadControl(Settings::ItemHandle& setting, const std::string& control) {
 			return EqualsIgnoringCase((std::string)setting, control);
 		}
 
-		static std::string LowerAscii(std::string value) {
-			std::transform(value.begin(), value.end(), value.begin(),
-			               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return value;
-		}
-
-		static bool ParseGamepadIndexPreference(const std::string& value, int& index) {
-			if (value.empty())
+		static bool ParsePreferredGamepadIndex(const std::string& value, int& index) {
+			char* end = nullptr;
+			long parsed = std::strtol(value.c_str(), &end, 10);
+			if (!end || *end != '\0' || parsed < 0)
 				return false;
-			for (char c : value) {
-				if (!std::isdigit(static_cast<unsigned char>(c)))
-					return false;
-			}
-			index = std::atoi(value.c_str());
+			index = static_cast<int>(parsed);
 			return true;
 		}
 
-		static bool MatchesPreferredGamepad(int joystickIndex, const char* controllerName) {
+		static bool MatchesPreferredGamepad(int index, const char* name) {
 			std::string preferred = (std::string)cg_gamepadPreferredController;
 			if (preferred.empty())
 				return true;
-
 			int preferredIndex = -1;
-			if (ParseGamepadIndexPreference(preferred, preferredIndex))
-				return joystickIndex == preferredIndex;
-
-			std::string name = controllerName ? controllerName : "";
-			std::string nameLower = LowerAscii(name);
-			std::string preferredLower = LowerAscii(preferred);
-			return nameLower == preferredLower ||
-			       nameLower.find(preferredLower) != std::string::npos;
+			if (ParsePreferredGamepadIndex(preferred, preferredIndex))
+				return index == preferredIndex;
+			return name && EqualsIgnoringCase(preferred, name);
 		}
 
-		static float NormalizeControllerAxis(Sint16 value) {
+		static float NormalizeAxis(Sint16 value) {
 			float v = value < 0 ? (float)value / 32768.0F : (float)value / 32767.0F;
 			return Clamp(v, -1.0F, 1.0F);
 		}
@@ -199,7 +217,6 @@ namespace spades {
 				invert = true;
 				name.erase(name.begin());
 			}
-
 			if (EqualsIgnoringCase(name, "LeftX"))
 				return SDL_CONTROLLER_AXIS_LEFTX;
 			if (EqualsIgnoringCase(name, "LeftY"))
@@ -215,12 +232,23 @@ namespace spades {
 			return SDL_CONTROLLER_AXIS_INVALID;
 		}
 
-		static float ApplyGamepadCurve(float value) {
-			float sign = value < 0.0F ? -1.0F : 1.0F;
-			float mag = fabsf(value);
-			if ((int)cg_gamepadResponseCurve != 0)
-				mag *= mag;
-			return sign * mag;
+		static bool ParseRawAxisName(std::string name, bool& invert, int& axis) {
+			invert = false;
+			axis = -1;
+			if (!name.empty() && name[0] == '-') {
+				invert = true;
+				name.erase(name.begin());
+			}
+			const std::string prefix("JoyAxis");
+			if (name.size() <= prefix.size() ||
+			    !EqualsIgnoringCase(name.substr(0, prefix.size()), prefix))
+				return false;
+			char* end = nullptr;
+			long parsed = std::strtol(name.c_str() + prefix.size(), &end, 10);
+			if (!end || *end != '\0' || parsed < 0)
+				return false;
+			axis = static_cast<int>(parsed);
+			return true;
 		}
 
 		static float ApplyGamepadDeadzone(float value) {
@@ -232,14 +260,43 @@ namespace spades {
 			return sign * ((mag - deadzone) / (1.0F - deadzone));
 		}
 
+		static float ApplyGamepadCurve(float value) {
+			if ((int)cg_gamepadResponseCurve == 0)
+				return value;
+			float sign = value < 0.0F ? -1.0F : 1.0F;
+			float mag = fabsf(value);
+			return sign * mag * mag;
+		}
+
 		static float ReadMappedAxis(const SDLRunner::GamepadState& state,
 		                            Settings::ItemHandle& setting) {
 			bool invert = false;
-			SDL_GameControllerAxis axis = ParseControllerAxisName((std::string)setting, invert);
+			int rawAxis = -1;
+			std::string name = (std::string)setting;
+			if (ParseRawAxisName(name, invert, rawAxis)) {
+				if (rawAxis < 0 || rawAxis >= static_cast<int>(state.rawAxes.size()))
+					return 0.0F;
+				float value = NormalizeAxis(state.rawAxes[rawAxis]);
+				return invert ? -value : value;
+			}
+			SDL_GameControllerAxis axis = ParseControllerAxisName(name, invert);
 			if (axis == SDL_CONTROLLER_AXIS_INVALID)
 				return 0.0F;
-			float value = NormalizeControllerAxis(state.axes[axis]);
+			float value = NormalizeAxis(state.axes[axis]);
 			return invert ? -value : value;
+		}
+
+		static void RumbleGamepad(SDLRunner::GamepadState& state) {
+			if (!(int)cg_gamepadVibration)
+				return;
+#if SDL_VERSION_ATLEAST(2, 0, 9)
+			if (state.controller) {
+				SDL_GameControllerRumble(state.controller, 0x2000, 0x6000, 80);
+				return;
+			}
+#endif
+			if (state.haptic)
+				SDL_HapticRumblePlay(state.haptic, 0.45F, 80);
 		}
 
 		static void SetGamepadAction(SDLRunner::GamepadState& state, View& view,
@@ -248,17 +305,9 @@ namespace spades {
 			if (old == down)
 				return;
 			old = down;
+			if (down && action == "GamepadActionFire")
+				RumbleGamepad(state);
 			view.KeyEvent(action, down);
-		}
-
-		static void ReleaseGamepadActions(SDLRunner::GamepadState& state, View& view) {
-			for (auto& item : state.emittedActions) {
-				if (item.second) {
-					item.second = false;
-					view.KeyEvent(item.first, false);
-				}
-			}
-			view.ControllerAxisEvent(0.0F, 0.0F, 0.0F, 0.0F);
 		}
 
 		static void DispatchGamepadControl(SDLRunner::GamepadState& state, View& view,
@@ -293,140 +342,29 @@ namespace spades {
 				SetGamepadAction(state, view, "GamepadActionScoreboard", down);
 		}
 
-		void SDLRunner::CloseGameController(View* view) {
-			if (!gamepadState)
+		static void DispatchGamepadRawControl(SDLRunner::GamepadState& state, View& view,
+		                                      const std::string& control, bool down) {
+			if (control.empty())
 				return;
-			if (view)
-				ReleaseGamepadActions(*gamepadState, *view);
-			if (gamepadState->controller) {
-				SPLog("Gamepad disconnected");
-				SDL_GameControllerClose(gamepadState->controller);
-				gamepadState->controller = nullptr;
-				gamepadState->instanceId = -1;
-				gamepadState->joystickIndex = -1;
-			}
-			gamepadState->axes.fill(0);
-			gamepadState->virtualButtons.clear();
-			gamepadState->uiVirtualButtons.clear();
+			bool& old = state.physicalButtons[control];
+			if (old == down)
+				return;
+			old = down;
+			if (view.NeedsAbsoluteMouseCoordinate())
+				view.KeyEvent(control, down);
+			else
+				DispatchGamepadControl(state, view, control, down);
 		}
 
-		void SDLRunner::OpenFirstGameController() {
-			if (!cg_gamepadEnabled || !gamepadState || gamepadState->controller)
+		static void DispatchGamepadUiAxis(SDLRunner::GamepadState& state, View& view,
+		                                  const std::string& name, bool down) {
+			if (name.empty())
 				return;
-
-			int count = SDL_NumJoysticks();
-			for (int i = 0; i < count; ++i) {
-				if (!SDL_IsGameController(i))
-					continue;
-				const char* name = SDL_GameControllerNameForIndex(i);
-				if (!MatchesPreferredGamepad(i, name))
-					continue;
-				SDL_GameController* controller = SDL_GameControllerOpen(i);
-				if (!controller) {
-					SPLog("Failed to open gamepad %d: %s", i, SDL_GetError());
-					continue;
-				}
-
-				SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
-				gamepadState->controller = controller;
-				gamepadState->instanceId = joystick ? SDL_JoystickInstanceID(joystick) : -1;
-				gamepadState->joystickIndex = i;
-				gamepadState->lastMissingPreference.clear();
-				SPLog("Gamepad connected [%d]: %s", i, SDL_GameControllerName(controller));
-				break;
-			}
-
-			std::string preferred = (std::string)cg_gamepadPreferredController;
-			if (!gamepadState->controller && !preferred.empty() &&
-			    gamepadState->lastMissingPreference != preferred) {
-				SPLog("Preferred gamepad not found: %s", preferred.c_str());
-				gamepadState->lastMissingPreference = preferred;
-			}
-		}
-
-		void SDLRunner::UpdateGameController(View& view, float dt) {
-			if (!gamepadState)
+			bool& old = state.uiAxisButtons[name];
+			if (old == down)
 				return;
-
-			if (!cg_gamepadEnabled) {
-				ReleaseGamepadActions(*gamepadState, view);
-				CloseGameController();
-				return;
-			}
-
-			if (gamepadState->controller &&
-			    !MatchesPreferredGamepad(gamepadState->joystickIndex,
-			                             SDL_GameControllerName(gamepadState->controller))) {
-				CloseGameController(&view);
-			}
-
-			OpenFirstGameController();
-			if (!gamepadState->controller) {
-				view.ControllerAxisEvent(0.0F, 0.0F, 0.0F, 0.0F);
-				return;
-			}
-
-			for (int i = 0; i < SDL_CONTROLLER_AXIS_MAX; ++i) {
-				gamepadState->axes[i] = SDL_GameControllerGetAxis(
-				  gamepadState->controller, static_cast<SDL_GameControllerAxis>(i));
-			}
-
-			float triggerThreshold = Clamp((float)cg_gamepadTriggerThreshold, 0.0F, 1.0F);
-			float leftTrigger =
-			  Clamp((float)gamepadState->axes[SDL_CONTROLLER_AXIS_TRIGGERLEFT] / 32767.0F, 0.0F, 1.0F);
-			float rightTrigger =
-			  Clamp((float)gamepadState->axes[SDL_CONTROLLER_AXIS_TRIGGERRIGHT] / 32767.0F, 0.0F, 1.0F);
-
-			if (view.NeedsAbsoluteMouseCoordinate()) {
-				ReleaseGamepadActions(*gamepadState, view);
-
-				auto updateUiVirtualButton = [&](const std::string& name, bool down) {
-					bool& old = gamepadState->uiVirtualButtons[name];
-					if (old == down)
-						return;
-					old = down;
-					view.KeyEvent(name, down);
-				};
-				updateUiVirtualButton("GamepadLeftTrigger", leftTrigger >= triggerThreshold);
-				updateUiVirtualButton("GamepadRightTrigger", rightTrigger >= triggerThreshold);
-				return;
-			}
-
-			for (auto& item : gamepadState->uiVirtualButtons) {
-				if (item.second) {
-					item.second = false;
-					view.KeyEvent(item.first, false);
-				}
-			}
-
-			auto updateVirtualButton = [&](const std::string& name, bool down) {
-				bool& old = gamepadState->virtualButtons[name];
-				if (old == down)
-					return;
-				old = down;
-				DispatchGamepadControl(*gamepadState, view, name, down);
-			};
-			updateVirtualButton("GamepadLeftTrigger", leftTrigger >= triggerThreshold);
-			updateVirtualButton("GamepadRightTrigger", rightTrigger >= triggerThreshold);
-
-			float moveX = ApplyGamepadCurve(ApplyGamepadDeadzone(
-			  ReadMappedAxis(*gamepadState, cg_gamepadAxisMoveX)));
-			float moveY = ApplyGamepadCurve(ApplyGamepadDeadzone(
-			  ReadMappedAxis(*gamepadState, cg_gamepadAxisMoveY)));
-			float lookX = ApplyGamepadCurve(ApplyGamepadDeadzone(
-			  ReadMappedAxis(*gamepadState, cg_gamepadAxisLookX)));
-			float lookY = ApplyGamepadCurve(ApplyGamepadDeadzone(
-			  ReadMappedAxis(*gamepadState, cg_gamepadAxisLookY)));
-
-			if ((int)cg_gamepadInvertY)
-				lookY = -lookY;
-
-			float sensitivity = std::max(0.0F, (float)cg_gamepadSensitivity);
-			float sensitivityX = std::max(0.0F, (float)cg_gamepadSensitivityX);
-			float sensitivityY = std::max(0.0F, (float)cg_gamepadSensitivityY);
-			float lookScale = 800.0F * dt * sensitivity;
-			view.ControllerAxisEvent(moveX, moveY, lookX * lookScale * sensitivityX,
-			                         lookY * lookScale * sensitivityY);
+			old = down;
+			view.KeyEvent(name, down);
 		}
 
 		std::string SDLRunner::TranslateKey(const SDL_Keysym& k) {
@@ -461,6 +399,208 @@ namespace spades {
 		}
 
 		int SDLRunner::GetModState() { return SDL_GetModState(); }
+
+		void SDLRunner::CloseGamepad(View* view) {
+			if (!gamepadState)
+				return;
+			if (view) {
+				for (auto& item : gamepadState->emittedActions) {
+					if (item.second) {
+						item.second = false;
+						view->KeyEvent(item.first, false);
+					}
+				}
+				view->ControllerAxisEvent(0.0F, 0.0F, 0.0F, 0.0F);
+			}
+			if (gamepadState->haptic) {
+				SDL_HapticClose(gamepadState->haptic);
+				gamepadState->haptic = nullptr;
+			}
+			if (gamepadState->controller) {
+				SDL_GameControllerClose(gamepadState->controller);
+				gamepadState->controller = nullptr;
+				gamepadState->joystick = nullptr;
+			} else if (gamepadState->joystick) {
+				SDL_JoystickClose(gamepadState->joystick);
+				gamepadState->joystick = nullptr;
+			}
+			gamepadState->instanceId = -1;
+			gamepadState->joystickIndex = -1;
+			gamepadState->genericJoystick = false;
+			gamepadState->axes.fill(0);
+			gamepadState->rawAxes.clear();
+			gamepadState->emittedActions.clear();
+			gamepadState->physicalButtons.clear();
+			gamepadState->uiAxisButtons.clear();
+			gamepadState->virtualButtons.clear();
+		}
+
+		void SDLRunner::OpenPreferredGamepad() {
+			if (!cg_gamepadEnabled || !gamepadState || gamepadState->joystick)
+				return;
+
+			int count = SDL_NumJoysticks();
+			for (int pass = 0; pass < 2 && !gamepadState->joystick; ++pass) {
+				for (int i = 0; i < count; ++i) {
+					bool isController = SDL_IsGameController(i) != SDL_FALSE;
+					if ((pass == 0) != isController)
+						continue;
+
+					const char* name = isController ? SDL_GameControllerNameForIndex(i)
+					                                : SDL_JoystickNameForIndex(i);
+					if (!MatchesPreferredGamepad(i, name))
+						continue;
+
+					if (isController) {
+						SDL_GameController* controller = SDL_GameControllerOpen(i);
+						if (!controller) {
+							SPLog("Failed to open gamepad %d: %s", i, SDL_GetError());
+							continue;
+						}
+						gamepadState->controller = controller;
+						gamepadState->joystick = SDL_GameControllerGetJoystick(controller);
+						gamepadState->instanceId =
+						  gamepadState->joystick ? SDL_JoystickInstanceID(gamepadState->joystick) : -1;
+						SPLog("Gamepad connected [%d]: %s", i, SDL_GameControllerName(controller));
+					} else {
+						SDL_Joystick* joystick = SDL_JoystickOpen(i);
+						if (!joystick) {
+							SPLog("Failed to open generic gamepad %d: %s", i, SDL_GetError());
+							continue;
+						}
+						gamepadState->joystick = joystick;
+						gamepadState->instanceId = SDL_JoystickInstanceID(joystick);
+						gamepadState->genericJoystick = true;
+						if (SDL_JoystickIsHaptic(joystick)) {
+							gamepadState->haptic = SDL_HapticOpenFromJoystick(joystick);
+							if (gamepadState->haptic &&
+							    SDL_HapticRumbleInit(gamepadState->haptic) != 0) {
+								SDL_HapticClose(gamepadState->haptic);
+								gamepadState->haptic = nullptr;
+							}
+						}
+						SPLog("Generic gamepad connected [%d]: %s", i, SDL_JoystickName(joystick));
+					}
+
+					gamepadState->joystickIndex = i;
+					return;
+				}
+			}
+		}
+
+		void SDLRunner::UpdateGamepad(View& view, float dt) {
+			if (!gamepadState)
+				return;
+			if (!cg_gamepadEnabled) {
+				CloseGamepad(&view);
+				return;
+			}
+
+			if (gamepadState->joystick) {
+				const char* name = gamepadState->controller
+				                     ? SDL_GameControllerName(gamepadState->controller)
+				                     : SDL_JoystickName(gamepadState->joystick);
+				if (!MatchesPreferredGamepad(gamepadState->joystickIndex, name))
+					CloseGamepad(&view);
+			}
+
+			OpenPreferredGamepad();
+			if (!gamepadState->joystick) {
+				view.ControllerAxisEvent(0.0F, 0.0F, 0.0F, 0.0F);
+				return;
+			}
+
+			if (gamepadState->controller) {
+				SDL_GameControllerUpdate();
+				for (int i = 0; i < SDL_CONTROLLER_AXIS_MAX; ++i) {
+					gamepadState->axes[i] = SDL_GameControllerGetAxis(
+					  gamepadState->controller, static_cast<SDL_GameControllerAxis>(i));
+				}
+			} else {
+				gamepadState->axes.fill(0);
+			}
+
+			SDL_JoystickUpdate();
+			int axisCount = SDL_JoystickNumAxes(gamepadState->joystick);
+			gamepadState->rawAxes.resize(std::max(0, axisCount));
+			for (int i = 0; i < axisCount; ++i) {
+				Sint16 value = SDL_JoystickGetAxis(gamepadState->joystick, i);
+				gamepadState->rawAxes[i] = value;
+				if (gamepadState->genericJoystick && i < SDL_CONTROLLER_AXIS_MAX)
+					gamepadState->axes[i] = value;
+			}
+
+			if (gamepadState->controller) {
+				for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; ++i) {
+					std::string button = TranslateControllerButton(static_cast<Uint8>(i));
+					DispatchGamepadRawControl(
+					  *gamepadState, view, button,
+					  SDL_GameControllerGetButton(
+					    gamepadState->controller, static_cast<SDL_GameControllerButton>(i)) != 0);
+				}
+			} else {
+				int buttonCount = SDL_JoystickNumButtons(gamepadState->joystick);
+				for (int i = 0; i < buttonCount; ++i) {
+					DispatchGamepadRawControl(*gamepadState, view,
+					                          TranslateJoystickButton(static_cast<Uint8>(i)),
+					                          SDL_JoystickGetButton(gamepadState->joystick, i) != 0);
+				}
+				Uint8 hat = SDL_JoystickNumHats(gamepadState->joystick) > 0
+				              ? SDL_JoystickGetHat(gamepadState->joystick, 0)
+				              : SDL_HAT_CENTERED;
+				DispatchGamepadRawControl(*gamepadState, view, "GamepadDPadUp",
+				                          (hat & SDL_HAT_UP) != 0);
+				DispatchGamepadRawControl(*gamepadState, view, "GamepadDPadDown",
+				                          (hat & SDL_HAT_DOWN) != 0);
+				DispatchGamepadRawControl(*gamepadState, view, "GamepadDPadLeft",
+				                          (hat & SDL_HAT_LEFT) != 0);
+				DispatchGamepadRawControl(*gamepadState, view, "GamepadDPadRight",
+				                          (hat & SDL_HAT_RIGHT) != 0);
+			}
+
+			float triggerThreshold = Clamp((float)cg_gamepadTriggerThreshold, 0.0F, 1.0F);
+			auto updateTrigger = [&](const std::string& name, float value) {
+				bool& old = gamepadState->virtualButtons[name];
+				bool down = value >= triggerThreshold;
+				if (old != down) {
+					old = down;
+					if (view.NeedsAbsoluteMouseCoordinate())
+						view.KeyEvent(name, down);
+					else
+						DispatchGamepadControl(*gamepadState, view, name, down);
+				}
+			};
+			updateTrigger("GamepadLeftTrigger",
+			              Clamp((float)gamepadState->axes[SDL_CONTROLLER_AXIS_TRIGGERLEFT] / 32767.0F,
+			                    0.0F, 1.0F));
+			updateTrigger("GamepadRightTrigger",
+			              Clamp((float)gamepadState->axes[SDL_CONTROLLER_AXIS_TRIGGERRIGHT] / 32767.0F,
+			                    0.0F, 1.0F));
+
+			if (view.NeedsAbsoluteMouseCoordinate()) {
+				view.ControllerAxisEvent(0.0F, 0.0F, 0.0F, 0.0F);
+				return;
+			}
+
+			float moveX = ApplyGamepadCurve(
+			  ApplyGamepadDeadzone(ReadMappedAxis(*gamepadState, cg_gamepadAxisMoveX)));
+			float moveY = ApplyGamepadCurve(
+			  ApplyGamepadDeadzone(ReadMappedAxis(*gamepadState, cg_gamepadAxisMoveY)));
+			float lookX = ApplyGamepadCurve(
+			  ApplyGamepadDeadzone(ReadMappedAxis(*gamepadState, cg_gamepadAxisLookX)));
+			float lookY = ApplyGamepadCurve(
+			  ApplyGamepadDeadzone(ReadMappedAxis(*gamepadState, cg_gamepadAxisLookY)));
+
+			if ((int)cg_gamepadInvertY)
+				lookY = -lookY;
+
+			float sensitivity = std::max(0.0F, (float)cg_gamepadSensitivity);
+			float sensitivityX = std::max(0.0F, (float)cg_gamepadSensitivityX);
+			float sensitivityY = std::max(0.0F, (float)cg_gamepadSensitivityY);
+			float lookScale = 800.0F * dt * sensitivity;
+			view.ControllerAxisEvent(moveX, moveY, lookX * lookScale * sensitivityX,
+			                         lookY * lookScale * sensitivityY);
+		}
 
 		void SDLRunner::ProcessEvent(SDL_Event& event, View& view) {
 			switch (event.type) {
@@ -526,34 +666,19 @@ namespace spades {
 					}
 					break;
 				case SDL_CONTROLLERDEVICEADDED:
-					if (cg_gamepadEnabled)
-						OpenFirstGameController();
+				case SDL_JOYDEVICEADDED:
+					OpenPreferredGamepad();
 					break;
 				case SDL_CONTROLLERDEVICEREMOVED:
 					if (gamepadState && event.cdevice.which == gamepadState->instanceId) {
-						CloseGameController(&view);
-						OpenFirstGameController();
+						CloseGamepad(&view);
+						OpenPreferredGamepad();
 					}
 					break;
-				case SDL_CONTROLLERBUTTONDOWN:
-				case SDL_CONTROLLERBUTTONUP:
-					if (gamepadState && gamepadState->controller &&
-					    event.cbutton.which == gamepadState->instanceId) {
-						std::string button = TranslateControllerButton(event.cbutton.button);
-						if (!button.empty()) {
-							bool down = event.type == SDL_CONTROLLERBUTTONDOWN;
-							if (view.NeedsAbsoluteMouseCoordinate())
-								view.KeyEvent(button, down);
-							else
-								DispatchGamepadControl(*gamepadState, view, button, down);
-
-							if (down && cg_gamepadVibration &&
-							    MatchesGamepadControl(cg_gamepadButtonFire, button)) {
-#if SDL_VERSION_ATLEAST(2, 0, 9)
-								SDL_GameControllerRumble(gamepadState->controller, 0x2000, 0x6000, 80);
-#endif
-							}
-						}
+				case SDL_JOYDEVICEREMOVED:
+					if (gamepadState && event.jdevice.which == gamepadState->instanceId) {
+						CloseGamepad(&view);
+						OpenPreferredGamepad();
 					}
 					break;
 				case SDL_CONTROLLERAXISMOTION:
@@ -561,6 +686,31 @@ namespace spades {
 					    event.caxis.which == gamepadState->instanceId &&
 					    event.caxis.axis < SDL_CONTROLLER_AXIS_MAX) {
 						gamepadState->axes[event.caxis.axis] = event.caxis.value;
+						if (view.NeedsAbsoluteMouseCoordinate()) {
+							DispatchGamepadUiAxis(
+							  *gamepadState, view,
+							  GetControllerAxisName(
+							    static_cast<SDL_GameControllerAxis>(event.caxis.axis)),
+							  fabsf(NormalizeAxis(event.caxis.value)) >= 0.55F);
+						}
+					}
+					break;
+				case SDL_JOYAXISMOTION:
+					if (gamepadState && gamepadState->joystick &&
+					    event.jaxis.which == gamepadState->instanceId) {
+						if (event.jaxis.axis >= gamepadState->rawAxes.size())
+							gamepadState->rawAxes.resize(event.jaxis.axis + 1);
+						gamepadState->rawAxes[event.jaxis.axis] = event.jaxis.value;
+						if (gamepadState->genericJoystick &&
+						    event.jaxis.axis < SDL_CONTROLLER_AXIS_MAX) {
+							gamepadState->axes[event.jaxis.axis] = event.jaxis.value;
+						}
+						if (view.NeedsAbsoluteMouseCoordinate()) {
+							DispatchGamepadUiAxis(
+							  *gamepadState, view,
+							  "JoyAxis" + std::to_string(event.jaxis.axis),
+							  fabsf(NormalizeAxis(event.jaxis.value)) >= 0.55F);
+						}
 					}
 					break;
 				default: break;
@@ -603,8 +753,11 @@ namespace spades {
 					}
 
 					ot += dt;
+					while (SDL_PollEvent(&event))
+						ProcessEvent(event, *view);
+
 					if ((int32_t)dt > 0) {
-						UpdateGameController(*view, (float)dt / 1000.0F);
+						UpdateGamepad(*view, (float)dt / 1000.0F);
 						view->RunFrame((float)dt / 1000.0F);
 						view->RunFrameLate((float)dt / 1000.0F);
 					}
@@ -702,13 +855,9 @@ namespace spades {
 
 						absoluteMouseCoord = ab;
 					}
-
-					// Process events
-					while (SDL_PollEvent(&event))
-						ProcessEvent(event, *view);
 				}
 
-				CloseGameController(&*view);
+				CloseGamepad(&*view);
 				SPLog("Leaving Client Loop");
 			}
 		}
@@ -830,8 +979,9 @@ namespace spades {
 		void SDLRunner::Run(int width, int height) {
 			SPADES_MARK_FUNCTION();
 
-			SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC);
+			SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC);
 			SDL_GameControllerEventState(SDL_ENABLE);
+			SDL_JoystickEventState(SDL_ENABLE);
 
 			try {
 				std::string caption;
