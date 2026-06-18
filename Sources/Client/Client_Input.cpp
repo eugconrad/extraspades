@@ -297,27 +297,6 @@ namespace spades {
 			}
 		}
 
-		void Client::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
-			SPADES_MARK_FUNCTION();
-
-			if (NeedsAbsoluteMouseCoordinate()) {
-				gamepadPlayerInput.moveForward = false;
-				gamepadPlayerInput.moveBackward = false;
-				gamepadPlayerInput.moveLeft = false;
-				gamepadPlayerInput.moveRight = false;
-				return;
-			}
-
-			const float moveThreshold = 0.35F;
-			gamepadPlayerInput.moveLeft = moveX < -moveThreshold;
-			gamepadPlayerInput.moveRight = moveX > moveThreshold;
-			gamepadPlayerInput.moveForward = moveY < -moveThreshold;
-			gamepadPlayerInput.moveBackward = moveY > moveThreshold;
-
-			if (lookX != 0.0F || lookY != 0.0F)
-				MouseEvent(lookX, lookY);
-		}
-
 		void Client::WheelEvent(float x, float y) {
 			SPADES_MARK_FUNCTION();
 
@@ -398,6 +377,27 @@ namespace spades {
 			return false;
 		}
 
+		void Client::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
+			SPADES_MARK_FUNCTION();
+
+			if (NeedsAbsoluteMouseCoordinate()) {
+				gamepadPlayerInput.moveForward = false;
+				gamepadPlayerInput.moveBackward = false;
+				gamepadPlayerInput.moveLeft = false;
+				gamepadPlayerInput.moveRight = false;
+				return;
+			}
+
+			const float moveThreshold = 0.35F;
+			gamepadPlayerInput.moveLeft = moveX < -moveThreshold;
+			gamepadPlayerInput.moveRight = moveX > moveThreshold;
+			gamepadPlayerInput.moveForward = moveY < -moveThreshold;
+			gamepadPlayerInput.moveBackward = moveY > moveThreshold;
+
+			if (lookX != 0.0F || lookY != 0.0F)
+				MouseEvent(lookX, lookY);
+		}
+
 		bool Client::HandleGamepadAction(const std::string& name, bool down) {
 			if (name.compare(0, 13, "GamepadAction") != 0)
 				return false;
@@ -417,7 +417,6 @@ namespace spades {
 			if (name == "GamepadActionAim") {
 				bool lastVal = gamepadWeapInput.secondary || weapInput.secondary;
 				gamepadWeapInput.secondary = down;
-
 				if (down && world) {
 					if (stmp::optional<Player&> maybePlayer = world->GetLocalPlayer()) {
 						Player& p = maybePlayer.value();
@@ -447,7 +446,7 @@ namespace spades {
 				return true;
 			}
 			if (name == "GamepadActionScoreboard") {
-				gamepadScoreboardVisible = down;
+				scoreboardVisible = down;
 				return true;
 			}
 			if (name == "GamepadActionMenu") {
@@ -464,9 +463,7 @@ namespace spades {
 				return true;
 
 			Player& p = maybePlayer.value();
-			bool localPlayerIsAlive = p.IsAlive();
-			bool localPlayerIsSpectator = p.IsSpectator();
-			if (localPlayerIsSpectator || !localPlayerIsAlive)
+			if (p.IsSpectator() || !p.IsAlive())
 				return true;
 
 			auto selectTool = [&](Player::ToolType tool, const char* unavailable) {

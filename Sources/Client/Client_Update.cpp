@@ -242,7 +242,6 @@ namespace spades {
 						largeMapView->SetZoom(false);
 						chatWindow->SetExpanded(false);
 						scoreboardVisible = false;
-						gamepadScoreboardVisible = false;
 					}
 
 					// reset all "delayed actions"
@@ -625,7 +624,6 @@ namespace spades {
 			inp.crouch = inp.crouch || gamepadPlayerInput.crouch;
 			inp.sneak = inp.sneak || gamepadPlayerInput.sneak;
 			inp.sprint = inp.sprint || gamepadPlayerInput.sprint;
-
 			WeaponInput winp = weapInput;
 			winp.primary = winp.primary || gamepadWeapInput.primary;
 			winp.secondary = winp.secondary || gamepadWeapInput.secondary;

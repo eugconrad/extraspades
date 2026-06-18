@@ -229,7 +229,6 @@ namespace spades {
 
 			bool reloadKeyPressed;
 			bool gamepadReloadKeyPressed = false;
-			bool gamepadScoreboardVisible = false;
 			bool noclipEnabled = false;
 
 			struct HurtSprite {
@@ -274,6 +273,7 @@ namespace spades {
 			bool CanLocalPlayerUseTool();
 			bool CanLocalPlayerUseWeapon();
 			bool CanLocalPlayerReloadWeapon();
+			bool HandleGamepadAction(const std::string&, bool down);
 
 			/** Retrieves `ClientPlayer` for the local player, or `{}` if it does not exist. */
 			stmp::optional<ClientPlayer&> GetLocalClientPlayer();
@@ -550,7 +550,6 @@ namespace spades {
 			void TakeMapShot();
 
 			void NetLog(const char* format, ...);
-			bool HandleGamepadAction(const std::string&, bool down);
 
 		protected:
 			~Client();
@@ -611,7 +610,7 @@ namespace spades {
 
 			bool WantsToBeClosed() override;
 			bool IsMuted();
-			bool IsScoreboardVisible() { return scoreboardVisible || gamepadScoreboardVisible; }
+			bool IsScoreboardVisible() { return scoreboardVisible; }
 
 			void PlayerSentChatMessage(Player&, bool global, const std::string&);
 			void ServerSentMessage(bool system, const std::string&);

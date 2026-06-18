@@ -198,11 +198,10 @@ namespace spades {
 				staffSpectating = false;
 			noclipEnabled = false;
 			reloadKeyPressed = false;
-			gamepadReloadKeyPressed = false;
-			scoreboardVisible = false;
-			gamepadScoreboardVisible = false;
 			gamepadPlayerInput = PlayerInput();
 			gamepadWeapInput = WeaponInput();
+			gamepadReloadKeyPressed = false;
+			scoreboardVisible = false;
 			flashlightOn = false;
 			debugHitTestZoom = false;
 			spectatorZoom = false;
