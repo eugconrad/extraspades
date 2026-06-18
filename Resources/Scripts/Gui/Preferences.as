@@ -664,6 +664,7 @@ namespace spades {
 	class ConfigHotKeyField : spades::ui::UIElement {
 		ConfigItem@ config;
 		private bool hover;
+		bool AxisOnly = false;
 		spades::ui::EventHandler@ KeyBound;
 
 		ConfigHotKeyField(spades::ui::UIManager manager, string configName) {
@@ -677,9 +678,34 @@ namespace spades {
 			set { config = value; }
 		}
 
+		private bool IsGamepadAxisKey(string key) {
+			return key == "LeftX" or key == "LeftY" or key == "RightX" or key == "RightY" or
+				key == "LeftTrigger" or key == "RightTrigger" or key.findFirst("JoyAxis") == 0;
+		}
+
+		private string FormatGamepadAxisName(string key) {
+			if (key == "LeftX")
+				return _Tr("Preferences", "Gamepad Left Stick X");
+			if (key == "LeftY")
+				return _Tr("Preferences", "Gamepad Left Stick Y");
+			if (key == "RightX")
+				return _Tr("Preferences", "Gamepad Right Stick X");
+			if (key == "RightY")
+				return _Tr("Preferences", "Gamepad Right Stick Y");
+			if (key == "LeftTrigger")
+				return _Tr("Preferences", "Gamepad Left Trigger Axis");
+			if (key == "RightTrigger")
+				return _Tr("Preferences", "Gamepad Right Trigger Axis");
+			if (key.findFirst("JoyAxis") == 0)
+				return _Tr("Preferences", "Joystick Axis") + " " + key.substr(7);
+			return key;
+		}
+
 		void KeyDown(string key) {
 			if (IsFocused) {
 				if (key != "Escape") {
+					if (AxisOnly and not IsGamepadAxisKey(key) and key != "BackSpace" and key != "Delete")
+						return;
 					if (key == " ") {
 						key = "Space";
 					} else if (key == "BackSpace" or key == "Delete") {
@@ -741,7 +767,8 @@ namespace spades {
 
 			Font@ font = this.Font;
 			string text = IsFocused
-				? _Tr("Preferences", "Press Key to Bind or [Escape] to Cancel...")
+				? (AxisOnly ? _Tr("Preferences", "Move Stick/Axis or [Escape] to Cancel...")
+							: _Tr("Preferences", "Press Key to Bind or [Escape] to Cancel..."))
 				: config.StringValue;
 
 			Vector4 color = Vector4(1.0F, 1.0F, 1.0F, 1.0F);
@@ -792,6 +819,8 @@ namespace spades {
 				text = _Tr("Preferences", "Gamepad D-Pad Left");
 			} else if (text == "GamepadDPadRight") {
 				text = _Tr("Preferences", "Gamepad D-Pad Right");
+			} else if (IsGamepadAxisKey(text)) {
+				text = FormatGamepadAxisName(text);
 			} else if (!IsFocused) {
 				for (uint i = 0, len = text.length; i < len; i++)
 					text[i] = ToUpper(text[i]);
@@ -850,7 +879,6 @@ namespace spades {
 					return;
 				}
 			}
-
 			string value = config.StringValue;
 			Caption = value.length == 0 ? "Auto" : "[" + value + "] " + _Tr("Preferences", "Not Connected");
 		}
@@ -858,10 +886,7 @@ namespace spades {
 		private void DropdownHandler(int index) {
 			if (index < 0)
 				return;
-			if (index == 0)
-				config = "";
-			else
-				config = IndexFromItem(items[index]);
+			config = index == 0 ? "" : IndexFromItem(items[index]);
 			UpdateCaption();
 		}
 
@@ -874,12 +899,6 @@ namespace spades {
 		void Render() {
 			UpdateCaption();
 			SimpleButton::Render();
-
-			Renderer@ r = Manager.Renderer;
-			Image@ img = r.RegisterImage("Gfx/UI/ScrollArrow.png");
-			AABB2 bnd = ScreenBounds;
-			Vector2 p = Vector2(bnd.max.x - 20.0F, (bnd.min.y + bnd.max.y) * 0.5F + 8.0F);
-			r.DrawImage(img, AABB2(p.x, p.y, 16.0F, -16.0F));
 		}
 	}
 
@@ -1342,6 +1361,8 @@ namespace spades {
 		private void OnKeyBound(spades::ui::UIElement@ sender) {
 			// unbind already bound key
 			ConfigHotKeyField@ bindField = cast<ConfigHotKeyField>(sender);
+			if (bindField.AxisOnly)
+				return;
 			string key = bindField.BoundKey;
 			for (uint i = 0; i < hotkeyItems.length; i++) {
 				ConfigHotKeyField@ f = hotkeyItems[i];
@@ -1443,6 +1464,19 @@ namespace spades {
 			spades::ui::UIElement@ container = CreateBasicLabel(caption, enabled);
 
 			ConfigHotKeyField field(Parent.Manager, configName);
+			field.Bounds = AABB2(FieldX, 2.0F, FieldWidth, 28.0F);
+			field.Enable = enabled;
+			container.AddChild(field);
+
+			@field.KeyBound = spades::ui::EventHandler(this.OnKeyBound);
+			hotkeyItems.insertLast(field);
+		}
+
+		void AddGamepadAxisControl(string caption, string configName, bool enabled = true) {
+			spades::ui::UIElement@ container = CreateBasicLabel(caption, enabled);
+
+			ConfigHotKeyField field(Parent.Manager, configName);
+			field.AxisOnly = true;
 			field.Bounds = AABB2(FieldX, 2.0F, FieldWidth, 28.0F);
 			field.Enable = enabled;
 			container.AddChild(field);
@@ -1918,12 +1952,11 @@ namespace spades {
 
 	class ControlOptionsPanel : spades::ui::UIElement {
 		private void SetConfig(string name, string value) {
-			ConfigItem cfg(name);
-			cfg = value;
+			ConfigItem config(name);
+			config = value;
 		}
 
 		private void OnResetGamepadClicked(spades::ui::UIElement@ sender) {
-			SetConfig("cg_gamepadEnabled", "1");
 			SetConfig("cg_gamepadPreferredController", "");
 			SetConfig("cg_gamepadInvertY", "0");
 			SetConfig("cg_gamepadSensitivity", "1");
@@ -2040,10 +2073,10 @@ namespace spades {
 			0, 0.8, 0.01, ConfigNumberFormatter(0, "%", "", 100));
 			layouter.AddSliderField(_Tr("Preferences", "Gamepad Trigger Threshold"), "cg_gamepadTriggerThreshold",
 			0, 1, 0.01, ConfigNumberFormatter(0, "%", "", 100));
-			layouter.AddInputField(_Tr("Preferences", "Move Axis X"), "cg_gamepadAxisMoveX");
-			layouter.AddInputField(_Tr("Preferences", "Move Axis Y"), "cg_gamepadAxisMoveY");
-			layouter.AddInputField(_Tr("Preferences", "Look Axis X"), "cg_gamepadAxisLookX");
-			layouter.AddInputField(_Tr("Preferences", "Look Axis Y"), "cg_gamepadAxisLookY");
+			layouter.AddGamepadAxisControl(_Tr("Preferences", "Move Axis X"), "cg_gamepadAxisMoveX");
+			layouter.AddGamepadAxisControl(_Tr("Preferences", "Move Axis Y"), "cg_gamepadAxisMoveY");
+			layouter.AddGamepadAxisControl(_Tr("Preferences", "Look Axis X"), "cg_gamepadAxisLookX");
+			layouter.AddGamepadAxisControl(_Tr("Preferences", "Look Axis Y"), "cg_gamepadAxisLookY");
 			layouter.AddControl(_Tr("Preferences", "Gamepad Fire"), "cg_gamepadButtonFire");
 			layouter.AddControl(_Tr("Preferences", "Gamepad Aim / Secondary"), "cg_gamepadButtonAim");
 			layouter.AddControl(_Tr("Preferences", "Gamepad Jump"), "cg_gamepadButtonJump");

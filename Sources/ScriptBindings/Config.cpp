@@ -24,6 +24,7 @@
 #include <Core/ThreadLocalStorage.h>
 #include <Imports/SDL.h>
 #include <unordered_map>
+#include <vector>
 
 namespace spades {
 
@@ -122,22 +123,30 @@ namespace spades {
 			auto* arrayType = engine->GetTypeInfoByDecl("array<string>");
 			auto* array = CScriptArray::Create(arrayType);
 
-			if ((SDL_WasInit(SDL_INIT_GAMECONTROLLER) & SDL_INIT_GAMECONTROLLER) == 0)
-				SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+			if ((SDL_WasInit(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) &
+			     (SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER)) !=
+			    (SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER)) {
+				SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER);
+			}
 
 			std::vector<std::string> items;
 			items.emplace_back("Auto");
 			int count = SDL_NumJoysticks();
 			for (int i = 0; i < count; ++i) {
-				if (!SDL_IsGameController(i))
-					continue;
-				const char* name = SDL_GameControllerNameForIndex(i);
-				items.emplace_back("[" + std::to_string(i) + "] " + (name ? name : "Unknown Gamepad"));
+				bool isController = SDL_IsGameController(i) != SDL_FALSE;
+				const char* name =
+				  isController ? SDL_GameControllerNameForIndex(i) : SDL_JoystickNameForIndex(i);
+				std::string label = "[" + std::to_string(i) + "] " +
+				                    (name ? name : "Unknown Gamepad");
+				if (!isController)
+					label += " (Generic Joystick)";
+				items.emplace_back(label);
 			}
 
 			array->Resize(static_cast<asUINT>(items.size()));
-			for (std::size_t i = 0; i < items.size(); i++)
+			for (std::size_t i = 0; i < items.size(); ++i) {
 				reinterpret_cast<std::string*>(array->At(static_cast<asUINT>(i)))->assign(items[i]);
+			}
 			return array;
 		}
 
