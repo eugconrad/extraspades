@@ -62,21 +62,6 @@ namespace spades {
 
 				return false;
 			}
-
-			bool HasPlayerFootSupport(const Handle<GameMap>& map, float x, float y, float z,
-			                          float size) {
-				return map->ClipBox(x - size, y - size, z) ||
-				       map->ClipBox(x - size, y + size, z) ||
-				       map->ClipBox(x + size, y - size, z) ||
-				       map->ClipBox(x + size, y + size, z);
-			}
-
-			bool WouldLeaveCrouchEdge(const Handle<GameMap>& map, float fromX, float fromY,
-			                          float toX, float toY, float supportZ, float size) {
-				const float supportSize = size * 0.8F;
-				return HasPlayerFootSupport(map, fromX, fromY, supportZ, supportSize) &&
-				       !HasPlayerFootSupport(map, toX, toY, supportZ, supportSize);
-			}
 		} // namespace
 
 		Player::Player(World& w, int pId, WeaponType wType, int tId) : world(w) {
@@ -1128,9 +1113,6 @@ namespace spades {
 			const Handle<GameMap>& map = world.GetMap();
 			SPAssert(map);
 
-			bool crouchEdgeGuard = input.crouch && !airborne && velocity.z >= 0.0F;
-			float supportZ = nz + m + velocity.z * f;
-
 			z = m;
 			float bx = nx + ((velocity.x < 0.0F) ? -size : size);
 			while (z >= -1.36F
@@ -1138,13 +1120,7 @@ namespace spades {
 				&& !map->ClipBox(bx, position.y + size, nz + z))
 				z -= 0.9F;
 			if (z < -1.36F) {
-				if (crouchEdgeGuard &&
-				    WouldLeaveCrouchEdge(map, position.x, position.y, nx, position.y,
-				                         supportZ, size)) {
-					velocity.x = 0.0F;
-				} else {
-					position.x = nx;
-				}
+				position.x = nx;
 			} else if (!input.crouch && orientation.z < 0.5F && !input.sprint) {
 				z = 0.35F;
 				while (z >= -2.36F
@@ -1168,13 +1144,7 @@ namespace spades {
 				&& !map->ClipBox(position.x + size, by, nz + z))
 				z -= 0.9F;
 			if (z < -1.36F) {
-				if (crouchEdgeGuard &&
-				    WouldLeaveCrouchEdge(map, position.x, position.y, position.x, ny,
-				                         supportZ, size)) {
-					velocity.y = 0.0F;
-				} else {
-					position.y = ny;
-				}
+				position.y = ny;
 			} else if (!input.crouch && orientation.z < 0.5F && !input.sprint && !climb) {
 				z = 0.35F;
 				while (z >= -2.36F
