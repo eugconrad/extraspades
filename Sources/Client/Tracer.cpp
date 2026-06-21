@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "Client.h"
+#include "Extra/ExtraClientFeatures.h"
 #include "IRenderer.h"
 #include "Tracer.h"
 #include <Core/Settings.h>
@@ -140,6 +141,8 @@ namespace spades {
 			}
 		}
 
-		Tracer::~Tracer() { client.UnregisterTracer(ownerPlayerId, this); }
+		Tracer::~Tracer() {
+			client.GetExtraFeatures().BulletTrails().UnregisterTracer(ownerPlayerId, this);
+		}
 	} // namespace client
 } // namespace spades

@@ -21,6 +21,8 @@
 
 #include "Client.h"
 
+#include "Extra/ExtraClientFeatures.h"
+
 #include <cstdio>
 
 #include <Core/Settings.h>
@@ -122,17 +124,14 @@ SPADES_SETTING(cg_hideHud);
 
 DEFINE_SPADES_SETTING(cg_keyToggleLeftHand, "c");
 SPADES_SETTING(cg_viewWeaponSide);
-DEFINE_SPADES_SETTING(cg_keyToggleFog, "i");
-DEFINE_SPADES_SETTING(cg_disableFogVisual, "0");
-DEFINE_SPADES_SETTING(cg_keyToggleNoclip, "p");
-DEFINE_SPADES_SETTING(cg_adsZoomMin, "1.0");
-DEFINE_SPADES_SETTING(cg_adsZoomMax, "2.5");
-DEFINE_SPADES_SETTING(cg_adsZoomStep, "0.3");
 
 namespace spades {
 	namespace client {
 
 		bool Client::WantsToBeClosed() { return readyToClose; }
+		bool Client::IsNoclipEnabled() const {
+			return extraFeatures && extraFeatures->Camera().IsNoclipEnabled();
+		}
 		void Client::Closing() { SPADES_MARK_FUNCTION(); }
 
 		bool Client::NeedsAbsoluteMouseCoordinate() {
@@ -361,159 +360,31 @@ namespace spades {
 
 		void Client::ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY) {
 			SPADES_MARK_FUNCTION();
-
-			if (NeedsAbsoluteMouseCoordinate()) {
-				gamepadPlayerInput.moveForward = false;
-				gamepadPlayerInput.moveBackward = false;
-				gamepadPlayerInput.moveLeft = false;
-				gamepadPlayerInput.moveRight = false;
-				return;
-			}
-
-			const float moveThreshold = 0.35F;
-			gamepadPlayerInput.moveLeft = moveX < -moveThreshold;
-			gamepadPlayerInput.moveRight = moveX > moveThreshold;
-			gamepadPlayerInput.moveForward = moveY < -moveThreshold;
-			gamepadPlayerInput.moveBackward = moveY > moveThreshold;
-
-			if (lookX != 0.0F || lookY != 0.0F)
-				MouseEvent(lookX, lookY);
+			extraFeatures->ControllerAxisEvent(moveX, moveY, lookX, lookY);
 		}
 
-		bool Client::HandleGamepadAction(const std::string& name, bool down) {
-			if (name.compare(0, 13, "GamepadAction") != 0)
-				return false;
+		void Client::ClearTransientInputState() {
+			playerInput = PlayerInput();
+			weapInput = WeaponInput();
+			keypadInput = KeypadInput();
+			reloadKeyPressed = false;
+			extraFeatures->ClearTransientInputState();
 
-			if (name == "GamepadActionFire") {
-				gamepadWeapInput.primary = down;
-				if (down && world) {
-					if (stmp::optional<Player&> maybePlayer = world->GetLocalPlayer()) {
-						Player& p = maybePlayer.value();
-						if (p.IsToolWeapon() && !CanLocalPlayerUseWeapon())
-							PlayerDryFiredWeapon(p);
-					}
+			if (world) {
+				if (stmp::optional<Player&> maybeLocal = world->GetLocalPlayer()) {
+					Player& localPlayer = maybeLocal.value();
+					localPlayer.SetInput(PlayerInput());
+					localPlayer.SetWeaponInput(WeaponInput());
+					localPlayer.SetBlockCursorDragging(false);
 				}
-				return true;
 			}
-
-			if (name == "GamepadActionAim") {
-				bool lastVal = gamepadWeapInput.secondary || weapInput.secondary;
-				gamepadWeapInput.secondary = down;
-				if (down && world) {
-					if (stmp::optional<Player&> maybePlayer = world->GetLocalPlayer()) {
-						Player& p = maybePlayer.value();
-						if (p.IsToolWeapon() && !lastVal && CanLocalPlayerUseWeapon()) {
-							AudioParam param;
-							param.volume = 0.08F;
-							Handle<IAudioChunk> c =
-							  audioDevice->RegisterSound("Sounds/Weapons/AimDownSightLocal.opus");
-							audioDevice->PlayLocal(c.GetPointerOrNull(),
-								MakeVector3(0.4F, -0.3F, 0.5F), param);
-						}
-					}
-				}
-				return true;
-			}
-
-			if (name == "GamepadActionJump") {
-				gamepadPlayerInput.jump = down;
-				return true;
-			}
-			if (name == "GamepadActionCrouch") {
-				gamepadPlayerInput.crouch = down;
-				return true;
-			}
-			if (name == "GamepadActionReload") {
-				gamepadReloadKeyPressed = down;
-				return true;
-			}
-			if (name == "GamepadActionScoreboard") {
-				scoreboardVisible = down;
-				return true;
-			}
-			if (name == "GamepadActionMenu") {
-				if (down)
-					KeyEvent("Escape", true);
-				return true;
-			}
-
-			if (!down || !world)
-				return true;
-
-			stmp::optional<Player&> maybePlayer = world->GetLocalPlayer();
-			if (!maybePlayer)
-				return true;
-
-			Player& p = maybePlayer.value();
-			if (p.IsSpectator() || !p.IsAlive())
-				return true;
-
-			auto selectTool = [&](Player::ToolType tool, const char* unavailable) {
-				if (p.IsToolSelectable(tool))
-					SetSelectedTool(tool);
-				else
-					ShowAlert(_Tr("Client", unavailable), AlertType::Error);
-			};
-
-			if (name == "GamepadActionToolSpade") {
-				SetSelectedTool(Player::ToolSpade);
-			} else if (name == "GamepadActionToolBlock") {
-				selectTool(Player::ToolBlock, "Out of Blocks");
-			} else if (name == "GamepadActionToolWeapon") {
-				selectTool(Player::ToolWeapon, "Out of Ammo");
-			} else if (name == "GamepadActionToolGrenade") {
-				selectTool(Player::ToolGrenade, "Out of Grenades");
-			} else if (name == "GamepadActionPrevTool" || name == "GamepadActionNextTool" ||
-			           name == "GamepadActionSwitchTool") {
-				Player::ToolType t = p.GetTool();
-				bool reverse = name == "GamepadActionPrevTool";
-				do {
-					if (reverse) {
-						switch (t) {
-							case Player::ToolSpade: t = Player::ToolGrenade; break;
-							case Player::ToolBlock: t = Player::ToolSpade; break;
-							case Player::ToolWeapon: t = Player::ToolBlock; break;
-							case Player::ToolGrenade: t = Player::ToolWeapon; break;
-						}
-					} else {
-						switch (t) {
-							case Player::ToolSpade: t = Player::ToolBlock; break;
-							case Player::ToolBlock: t = Player::ToolWeapon; break;
-							case Player::ToolWeapon: t = Player::ToolGrenade; break;
-							case Player::ToolGrenade: t = Player::ToolSpade; break;
-						}
-					}
-				} while (!p.IsToolSelectable(t));
-				SetSelectedTool(t);
-			}
-
-			return true;
 		}
 
 		void Client::KeyEvent(const std::string& name, bool down) {
 			SPADES_MARK_FUNCTION();
 
-			if (HandleGamepadAction(name, down))
+			if (extraFeatures->HandleInputKey(name, down))
 				return;
-
-			if (name == "Delete" && down) {
-				playerInput = PlayerInput();
-				weapInput = WeaponInput();
-				keypadInput = KeypadInput();
-				reloadKeyPressed = false;
-
-				if (world) {
-					if (stmp::optional<Player&> maybeLocal = world->GetLocalPlayer()) {
-						Player& localPlayer = maybeLocal.value();
-						localPlayer.SetInput(PlayerInput());
-						localPlayer.SetWeaponInput(WeaponInput());
-						localPlayer.SetBlockCursorDragging(false);
-					}
-				}
-
-				scriptedUI->ToggleDebugVisualMenu();
-				return;
-			}
 
 			if (scriptedUI->NeedsInput()) {
 				if (!scriptedUI->IsIgnored(name)) {
@@ -539,36 +410,6 @@ namespace spades {
 					}
 				}
 			} else if (world) {
-				if (CheckKey(cg_keyToggleNoclip, name) && down) {
-					noclipEnabled = !noclipEnabled;
-					playerInput = PlayerInput();
-					weapInput = WeaponInput();
-					keypadInput = KeypadInput();
-					reloadKeyPressed = false;
-
-					if (stmp::optional<Player&> maybeLocal = world->GetLocalPlayer()) {
-						Player& localPlayer = maybeLocal.value();
-						localPlayer.SetInput(PlayerInput());
-						localPlayer.SetWeaponInput(WeaponInput());
-						localPlayer.SetBlockCursorDragging(false);
-					}
-
-					if (noclipEnabled) {
-						freeCameraState.position = lastSceneDef.viewOrigin;
-						freeCameraState.velocity = MakeVector3(0.0F, 0.0F, 0.0F);
-
-						Vector3 o = -lastSceneDef.viewAxis[2];
-						followAndFreeCameraState.yaw = atan2f(o.y, o.x);
-						followAndFreeCameraState.pitch = -atan2f(o.z, o.GetLength2D());
-						followCameraState.enabled = false;
-					}
-
-					ShowAlert(noclipEnabled ? "Noclip enabled" : "Noclip disabled", AlertType::Notice);
-					Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Player/Flashlight.opus");
-					audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
-					return;
-				}
-
 				// volume control
 				if ((CheckKey(cg_keyVolumeDown, name) || CheckKey(cg_keyVolumeUp, name)) && down) {
 					int volume = s_volume;
@@ -852,8 +693,9 @@ namespace spades {
 
 				bool localPlayerIsAlive = p.IsAlive();
 				bool localPlayerIsSpectator = p.IsSpectator();
+				bool noclipActive = extraFeatures->Camera().IsNoclipEnabled();
 				bool localPlayerIsSpectating =
-				  localPlayerIsSpectator || staffSpectating || noclipEnabled;
+				  localPlayerIsSpectator || staffSpectating || noclipActive;
 				bool isStaff = activeNet->GetGameProperties()->isStaff;
 
 				// Pie menu: hold to open, release to commit.
@@ -905,7 +747,7 @@ namespace spades {
 					case ClientCameraMode::FirstPersonFollow:
 					case ClientCameraMode::ThirdPersonFollow:
 					case ClientCameraMode::Free: {
-						if (!noclipEnabled && CheckKey(cg_keyAttack, name)) {
+						if (!noclipActive && CheckKey(cg_keyAttack, name)) {
 							if (down) {
 								// reset zoom
 								if (spectatorZoom) {
@@ -921,7 +763,7 @@ namespace spades {
 									FollowNextPlayer(false);
 							}
 							return;
-						} else if (!noclipEnabled && CheckKey(cg_keyAltAttack, name)) {
+						} else if (!noclipActive && CheckKey(cg_keyAltAttack, name)) {
 							if (down) {
 								// reset zoom
 								if (spectatorZoom) {
@@ -937,13 +779,13 @@ namespace spades {
 									FollowNextPlayer(true);
 							}
 							return;
-						} else if (!noclipEnabled && CheckKey(cg_keyJump, name) &&
+						} else if (!noclipActive && CheckKey(cg_keyJump, name) &&
 						           cameraMode != ClientCameraMode::Free) {
 							auto maybeTarget = world->GetPlayer(GetCameraTargetPlayerId());
 							if (down && maybeTarget && maybeTarget->IsAlive())
 								followCameraState.firstPerson = !followCameraState.firstPerson;
 							return;
-						} else if (!noclipEnabled && CheckKey(cg_keyReloadWeapon, name)
+						} else if (!noclipActive && CheckKey(cg_keyReloadWeapon, name)
 							&& localPlayerIsSpectating && followCameraState.enabled) {
 							if (down) {
 								// reset jump
@@ -1168,14 +1010,6 @@ namespace spades {
 						  audioDevice->RegisterSound("Sounds/Misc/OpenMap.opus");
 						audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
 					}
-				} else if (CheckKey(cg_keyToggleFog, name) && down) {
-					cg_disableFogVisual = cg_disableFogVisual ? 0 : 1;
-					ShowAlert(_Tr("Client", "Fog visual: {0}",
-						cg_disableFogVisual ? "OFF" : "ON"), AlertType::Notice);
-
-					Handle<IAudioChunk> c =
-					  audioDevice->RegisterSound("Sounds/Player/Flashlight.opus");
-					audioDevice->PlayLocal(c.GetPointerOrNull(), AudioParam());
 				} else if (CheckKey(cg_keyStaffSpectating, name) && down && isStaff) {
 					staffSpectating = !staffSpectating;
 
@@ -1225,26 +1059,8 @@ namespace spades {
 				} else if (CheckKey(cg_keyAutoFocus, name) && down && cg_manualFocus) {
 					autoFocusEnabled = true;
 				} else if ((name == "WheelUp" || name == "WheelDown") && down) {
-					// While aiming down sights with a weapon, wheel controls ADS zoom only.
-					if (!localPlayerIsSpectator && localPlayerIsAlive && p.IsToolWeapon() &&
-					    p.GetWeaponInput().secondary) {
-						float minScale = cg_adsZoomMin;
-						float maxScale = cg_adsZoomMax;
-						float step = cg_adsZoomStep;
-
-						if (!(minScale > 0.01F))
-							minScale = 1.0F;
-						if (!(maxScale >= minScale))
-							maxScale = minScale;
-						if (!(step > 0.0F))
-							step = 0.05F;
-
-						if (name == "WheelUp")
-							adsZoomScale = std::min(adsZoomScale + step, maxScale);
-						else
-							adsZoomScale = std::max(adsZoomScale - step, minScale);
+					if (extraFeatures->Camera().HandleAdsWheel(name.c_str()))
 						return;
-					}
 
 					// When DoF control is enabled,
 					// tool switch is overrided by focal length control.

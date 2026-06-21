@@ -26,6 +26,8 @@
 #include <fstream>
 
 #include "Client.h"
+
+#include "Extra/ExtraClientFeatures.h"
 #include "Fonts.h"
 #include <Core/FileManager.h>
 #include <Core/IStream.h>
@@ -101,8 +103,6 @@ namespace spades {
 		      curDeaths(0),
 		      curStreak(0),
 		      bestStreak(0),
-		      customMultiKillCount(0),
-		      customMultiKillLastTime(-100.0F),
 		      meleeKills(0),
 		      grenadeKills(0),
 		      placedBlocks(0),
@@ -122,8 +122,6 @@ namespace spades {
 		      debugHitTestZoom(false),
 		      spectatorZoomState(0.0F),
 		      spectatorZoom(false),
-		      adsZoomScale(1.0F),
-		      adsZoomActiveLastFrame(false),
 		      spectatorPlayerNames(true),
 		      staffSpectating(false),
 		      focalLength(20.0F),
@@ -147,6 +145,7 @@ namespace spades {
 
 			chatWindow = stmp::make_unique<ChatWindow>(this, chatFont, false);
 			killfeedWindow = stmp::make_unique<ChatWindow>(this, chatFont, true);
+			extraFeatures = stmp::make_unique<ExtraClientFeatures>(*this);
 
 			hurtRingView = stmp::make_unique<HurtRingView>(this);
 			centerMessageView = stmp::make_unique<CenterMessageView>(this, centerFont);
@@ -178,13 +177,9 @@ namespace spades {
 			damageTaken = 0;
 			lastHurtTime = -100.0F;
 			lastHealTime = -100.0F;
-			lastKillFlashTime = -100.0F;
-			lastKillFlashHeadshot = false;
 			lastHitTime = -100.0F;
 			hurtRingView->ClearAll();
 			killStreaks.clear();
-			customMultiKillCount = 0;
-			customMultiKillLastTime = -100.0F;
 
 			// reset on new map
 			placedBlocks = 0;
@@ -193,24 +188,15 @@ namespace spades {
 			// preserve the staff/ESP toggle across seeks.
 			if (!IsDemoMode())
 				staffSpectating = false;
-			noclipEnabled = false;
 			reloadKeyPressed = false;
-			gamepadPlayerInput = PlayerInput();
-			gamepadWeapInput = WeaponInput();
-			gamepadReloadKeyPressed = false;
 			scoreboardVisible = false;
 			flashlightOn = false;
 			debugHitTestZoom = false;
 			spectatorZoom = false;
-			adsZoomScale = 1.0F;
-			adsZoomActiveLastFrame = false;
+			extraFeatures->ResetForWorld();
 			largeMapView->SetZoom(false);
 
 			clientPlayers.clear();
-			tracersByPlayer.clear();
-			bulletTrailLogManager = nullptr;
-			liveGrenadeTrails.clear();
-			persistedGrenadeTrails.clear();
 
 			if (world) {
 				world->SetListener(nullptr);
@@ -905,27 +891,7 @@ namespace spades {
 			if (soundsNum > 0)
 				SPLog("Loaded %d killstreak sounds", soundsNum);
 
-			auto registerOptionalCustomSound = [&](const char* baseName) -> Handle<IAudioChunk> {
-				std::string wavPath = std::string("Sounds/Feedback/CustomKill/") + baseName + ".wav";
-				if (FileManager::FileExists(wavPath.c_str()))
-					return audioDevice->RegisterSound(wavPath.c_str());
-
-				std::string opusPath = std::string("Sounds/Feedback/CustomKill/") + baseName + ".opus";
-				if (FileManager::FileExists(opusPath.c_str()))
-					return audioDevice->RegisterSound(opusPath.c_str());
-
-				SPLog("CustomKill sound not found: %s(.wav/.opus)", baseName);
-				return Handle<IAudioChunk>{};
-			};
-
-			customHeadshotSound = registerOptionalCustomSound("headshot");
-			customKnifeSound = registerOptionalCustomSound("knife");
-			customGrenadeSound = registerOptionalCustomSound("grenade");
-			customDoubleKillSound = registerOptionalCustomSound("doublekill");
-			customTripleKillSound = registerOptionalCustomSound("triplekill");
-			customMultiKillSound = registerOptionalCustomSound("multikill");
-			customUltraKillSound = registerOptionalCustomSound("ultrakill");
-			customGodlikeSound = registerOptionalCustomSound("godlike");
+			extraFeatures->Feedback().LoadSounds();
 		}
 
 		/** Records chat message/game events to the log file. */

@@ -1,23 +1,27 @@
-//
-//  BulletTrailLog.h
-//  OpenSpades
-//
+/*
+ Copyright (c) 2013 yvt
 
-#pragma once
+ This file is part of OpenSpades.
+ */
 
-#include "Client.h"
-#include "GameProperties.h"
-#include "IRenderer.h"
-#include "ILocalEntity.h"
-#include <Core/Math.h>
+#include "ExtraBulletTrails.h"
+
+#include "../Client.h"
+#include "../ILocalEntity.h"
+#include "../IRenderer.h"
+#include "../Tracer.h"
+#include <Core/Settings.h>
 #include <algorithm>
-#include <deque>
-#include <unordered_map>
 #include <vector>
+
+DEFINE_SPADES_SETTING(cg_tracersPerPlayerMax, "5");
+DEFINE_SPADES_SETTING(cg_trailLogsPerPlayerMax, "10");
+DEFINE_SPADES_SETTING(cg_trailLogLifetime, "5");
+DEFINE_SPADES_SETTING(cg_trailLogs, "1");
 
 namespace spades {
 	namespace client {
-		class BulletTrailLogManager : public ILocalEntity {
+		class ExtraBulletTrailLogManager : public ILocalEntity {
 			struct Segment {
 				Vector3 startPos;
 				Vector3 endPos;
@@ -114,14 +118,15 @@ namespace spades {
 			}
 
 		public:
-			explicit BulletTrailLogManager(Client& client) : client(client) {}
+			explicit ExtraBulletTrailLogManager(Client& client) : client(client) {}
 
 			void AddTrail(int ownerPlayerId, Vector3 startPos, Vector3 endPos, Vector4 color,
 			              float lifeTime, WeaponType weaponType, int maxPerPlayer) {
 				if (lifeTime <= 0.0F)
 					return;
 
-				if (TrailLog* group = IsShotgun(weaponType) ? FindRecentShotgunGroup(ownerPlayerId) : nullptr) {
+				if (TrailLog* group = IsShotgun(weaponType) ?
+				      FindRecentShotgunGroup(ownerPlayerId) : nullptr) {
 					group->segments.push_back({startPos, endPos});
 					group->lifeTime = std::max(group->lifeTime, std::max(1.5F, lifeTime));
 					group->holdTime = std::min(2.0F, group->lifeTime * 0.5F);
@@ -170,5 +175,73 @@ namespace spades {
 				}
 			}
 		};
+
+		ExtraBulletTrails::ExtraBulletTrails(Client& client) : client(client) {}
+
+		void ExtraBulletTrails::ResetForWorld() {
+			tracersByPlayer.clear();
+			trailLogManager = nullptr;
+		}
+
+		void ExtraBulletTrails::ClearLocalEntities() {
+			tracersByPlayer.clear();
+			trailLogManager = nullptr;
+		}
+
+		void ExtraBulletTrails::RegisterTracer(int playerId, Tracer* tracer) {
+			if (!tracer)
+				return;
+
+			int maxPerPlayer = std::max(1, (int)cg_tracersPerPlayerMax);
+			auto& tracers = tracersByPlayer[playerId];
+			std::vector<Tracer*> pendingExpire;
+			while ((int)tracers.size() >= maxPerPlayer) {
+				Tracer* oldTracer = tracers.front();
+				tracers.pop_front();
+				if (oldTracer)
+					pendingExpire.push_back(oldTracer);
+			}
+			tracers.push_back(tracer);
+			for (Tracer* oldTracer : pendingExpire)
+				oldTracer->ExpireNow();
+		}
+
+		void ExtraBulletTrails::UnregisterTracer(int playerId, Tracer* tracer) {
+			auto it = tracersByPlayer.find(playerId);
+			if (it == tracersByPlayer.end())
+				return;
+
+			auto& tracers = it->second;
+			tracers.erase(std::remove(tracers.begin(), tracers.end(), tracer), tracers.end());
+			if (tracers.empty())
+				tracersByPlayer.erase(it);
+		}
+
+		ExtraBulletTrailLogManager& ExtraBulletTrails::EnsureTrailLogManager() {
+			if (!trailLogManager) {
+				auto manager = stmp::make_unique<ExtraBulletTrailLogManager>(client);
+				trailLogManager = manager.get();
+				client.AddLocalEntity(std::move(manager));
+			}
+			return *trailLogManager;
+		}
+
+		void ExtraBulletTrails::AddTrail(int ownerPlayerId, Vector3 startPos, Vector3 endPos,
+		                                 Vector4 color, float lifeTime,
+		                                 WeaponType weaponType, int maxPerPlayer) {
+			EnsureTrailLogManager().AddTrail(ownerPlayerId, startPos, endPos, color,
+			                                 lifeTime, weaponType, maxPerPlayer);
+		}
+
+		void ExtraBulletTrails::AddConfiguredTrail(int ownerPlayerId, Vector3 startPos,
+		                                           Vector3 endPos, Vector4 color,
+		                                           WeaponType weaponType) {
+			if (!cg_trailLogs)
+				return;
+
+			float life = std::max(0.1F, (float)cg_trailLogLifetime);
+			AddTrail(ownerPlayerId, startPos, endPos, color, life, weaponType,
+			         (int)cg_trailLogsPerPlayerMax);
+		}
 	} // namespace client
 } // namespace spades

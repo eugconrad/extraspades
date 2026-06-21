@@ -4,6 +4,7 @@ file(GLOB AUDIO_FILES Audio/*.cpp Audio/*.h)
 file(GLOB AUDIO_AL_FILES Audio/AL/*.cpp Audio/AL/*.h)
 set(BINPACK_FILES binpack2d/binpack2d.hpp)
 file(GLOB CLIENT_FILES Client/*.cpp Client/*.h)
+file(GLOB CLIENT_EXTRA_FILES Client/Extra/*.cpp Client/Extra/*.h)
 file(GLOB CORE_FILES Core/*.c Core/*.cpp Core/*.h)
 file(GLOB DRAW_GL_FILES Draw/OpenGL/*.cpp Draw/OpenGL/*.h)
 file(GLOB DRAW_SW_FILES Draw/SW/*.cpp Draw/SW/*.h)
@@ -56,7 +57,7 @@ if(WIN32)
 endif()
 
 add_executable(ZeroSpades
-	${AUDIO_FILES} ${AUDIO_AL_FILES} ${BINPACK_FILES} ${CLIENT_FILES}
+	${AUDIO_FILES} ${AUDIO_AL_FILES} ${BINPACK_FILES} ${CLIENT_FILES} ${CLIENT_EXTRA_FILES}
 	${CORE_FILES} ${PLATFORM_FILES} ${DRAW_GL_FILES} ${DRAW_SW_FILES} ${ENET_FILES}
 	${ENET_INCLUDE} ${GUI_FILES} ${IMPORTS_FILES} ${KISS_FILES}
 	${JSON_FILES} ${JSON_INCLUDE} ${UNZIP_FILES} ${SCRIPTBINDING_FILES}
@@ -164,6 +165,7 @@ source_group("Audio" FILES ${AUDIO_FILES})
 source_group("Audio\\AL" FILES ${AUDIO_AL_FILES})
 source_group("libs\\binpack2d" FILES ${BINPACK_FILES})
 source_group("Client" FILES ${CLIENT_FILES})
+source_group("Client\\Extra" FILES ${CLIENT_EXTRA_FILES})
 source_group("Core" FILES ${CORE_FILES})
 source_group("Platform-specific" FILES ${PLATFORM_FILES})
 source_group("Draw\\OpenGL" FILES ${DRAW_GL_FILES})

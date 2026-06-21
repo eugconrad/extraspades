@@ -23,7 +23,6 @@
 
 #include <list>
 #include <array>
-#include <deque>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -76,7 +75,13 @@ namespace spades {
 		class ClientUI;
 		class PieMenuView;
 		class Tracer;
-		class BulletTrailLogManager;
+		class ExtraClientFeatures;
+		class ExtraGamepadInput;
+		class ExtraCameraController;
+		class ExtraDebugVisuals;
+		class ExtraBulletTrails;
+		class ExtraFeedbackEffects;
+		class ExtraGrenadePreview;
 
 		class Client : public IWorldListener, public gui::View {
 			friend class ScoreboardView;
@@ -88,7 +93,13 @@ namespace spades {
 			friend class ClientPlayer;
 			friend class ClientUI;
 			friend class Tracer;
-			friend class BulletTrailLogManager;
+			friend class ExtraClientFeatures;
+			friend class ExtraGamepadInput;
+			friend class ExtraCameraController;
+			friend class ExtraDebugVisuals;
+			friend class ExtraBulletTrails;
+			friend class ExtraFeedbackEffects;
+			friend class ExtraGrenadePreview;
 
 			/** used to keep the input state of keypad so that
 			 * after user pressed left and right, and then
@@ -167,12 +178,11 @@ namespace spades {
 
 			// pie menu
 			std::unique_ptr<PieMenuView> pieMenuView;
+			std::unique_ptr<ExtraClientFeatures> extraFeatures;
 
 			// player state
 			PlayerInput playerInput;
-			PlayerInput gamepadPlayerInput;
 			WeaponInput weapInput;
-			WeaponInput gamepadWeapInput;
 			KeypadInput keypadInput;
 			Player::ToolType lastTool;
 			bool hasLastTool;
@@ -182,8 +192,6 @@ namespace spades {
 			float lastOriSentTime;
 			float lastHurtTime;
 			float lastHealTime;
-			float lastKillFlashTime;
-			bool lastKillFlashHeadshot;
 			float lastAliveTime;
 			int lastRespawnCount;
 			float lastHitTime;
@@ -194,21 +202,11 @@ namespace spades {
 			int curDeaths;
 			int curStreak;
 			int bestStreak;
-			int customMultiKillCount;
-			float customMultiKillLastTime;
 			int meleeKills;
 			int grenadeKills;
 			int placedBlocks;
 
 			std::unordered_map<int, std::unordered_map<int, int>> killStreaks;
-			std::unordered_map<int, std::deque<Tracer*>> tracersByPlayer;
-			BulletTrailLogManager* bulletTrailLogManager = nullptr;
-			std::unordered_map<const Grenade*, std::vector<Vector3>> liveGrenadeTrails;
-			struct PersistedGrenadeTrail {
-				std::vector<Vector3> points;
-				float expireTime;
-			};
-			std::vector<PersistedGrenadeTrail> persistedGrenadeTrails;
 
 			struct WeaponStats {
 				std::array<int, 3> hits, shots;
@@ -225,8 +223,6 @@ namespace spades {
 			float worldSetTime;
 
 			bool reloadKeyPressed;
-			bool gamepadReloadKeyPressed = false;
-			bool noclipEnabled = false;
 
 			struct HurtSprite {
 				float angle;
@@ -270,13 +266,13 @@ namespace spades {
 			bool CanLocalPlayerUseTool();
 			bool CanLocalPlayerUseWeapon();
 			bool CanLocalPlayerReloadWeapon();
-			bool HandleGamepadAction(const std::string&, bool down);
+			void ClearTransientInputState();
 
 			/** Retrieves `ClientPlayer` for the local player, or `{}` if it does not exist. */
 			stmp::optional<ClientPlayer&> GetLocalClientPlayer();
 
 			void SetSelectedTool(Player::ToolType, bool quiet = false);
-			bool IsNoclipEnabled() const { return noclipEnabled; }
+			bool IsNoclipEnabled() const;
 
 			// view
 			SceneDefinition lastSceneDef;
@@ -306,8 +302,6 @@ namespace spades {
 
 			float spectatorZoomState;
 			bool spectatorZoom;
-			float adsZoomScale;
-			bool adsZoomActiveLastFrame;
 
 			// manual focus
 			float focalLength;
@@ -463,18 +457,7 @@ namespace spades {
 
 			// Killsteak sounds
 			std::vector<Handle<IAudioChunk>> killSounds;
-			Handle<IAudioChunk> customHeadshotSound;
-			Handle<IAudioChunk> customKnifeSound;
-			Handle<IAudioChunk> customGrenadeSound;
-			Handle<IAudioChunk> customDoubleKillSound;
-			Handle<IAudioChunk> customTripleKillSound;
-			Handle<IAudioChunk> customMultiKillSound;
-			Handle<IAudioChunk> customUltraKillSound;
-			Handle<IAudioChunk> customGodlikeSound;
 			void LoadKillSounds();
-			void RegisterTracer(int playerId, Tracer* tracer);
-			void UnregisterTracer(int playerId, Tracer* tracer);
-			BulletTrailLogManager& EnsureBulletTrailLogManager();
 
 			void UpdateWorld(float dt, float gameplayDt);
 			void UpdateLocalSpectator(float dt);
@@ -599,6 +582,8 @@ namespace spades {
 			IRenderer& GetRenderer() { return *renderer; }
 			SceneDefinition GetLastSceneDef() { return lastSceneDef; }
 			IAudioDevice& GetAudioDevice() { return *audioDevice; }
+			ExtraClientFeatures& GetExtraFeatures() { return *extraFeatures; }
+			const ExtraClientFeatures& GetExtraFeatures() const { return *extraFeatures; }
 
 			float GetTime() { return time; }
 

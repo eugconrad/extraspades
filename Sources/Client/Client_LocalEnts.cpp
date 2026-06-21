@@ -25,6 +25,8 @@
 
 #include "Client.h"
 
+#include "Extra/ExtraClientFeatures.h"
+
 #include <Core/ConcurrentDispatch.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
@@ -123,7 +125,7 @@ namespace spades {
 			corpses.clear();
 
 			damageIndicators.clear();
-			bulletTrailLogManager = nullptr;
+			extraFeatures->BulletTrails().ClearLocalEntities();
 			localEntities.clear();
 			bloodMarks->Clear();
 		}
