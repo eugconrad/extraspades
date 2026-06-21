@@ -37,10 +37,43 @@ namespace spades {
 		namespace {
 			const char* BlockTexturePath = "Textures/Blocks";
 			const int AtlasPadding = 4;
+			const float TextureMatchLightnessBias = 0.16F;
+			const float TextureMatchLuminanceWeight = 1.5F;
+			const float TextureMatchChromaWeight = 0.5F;
 
 			BlockTextureRef InvalidBlockTextureRef() {
 				BlockTextureRef ref = {0, 0, 0, 0, false};
 				return ref;
+			}
+
+			int LightenForTextureMatch(uint8_t value) {
+				float channel = static_cast<float>(value);
+				return static_cast<int>(channel + (255.0F - channel) * TextureMatchLightnessBias +
+				                        0.5F);
+			}
+
+			float Luminance(int r, int g, int b) {
+				return 0.2126F * static_cast<float>(r) + 0.7152F * static_cast<float>(g) +
+				       0.0722F * static_cast<float>(b);
+			}
+
+			int Chroma(int r, int g, int b) {
+				return std::max(r, std::max(g, b)) - std::min(r, std::min(g, b));
+			}
+
+			float TextureMatchDistance(int targetR, int targetG, int targetB, int textureR,
+			                           int textureG, int textureB) {
+				const int dr = targetR - textureR;
+				const int dg = targetG - textureG;
+				const int db = targetB - textureB;
+				const float rgbDistance = static_cast<float>(dr * dr + dg * dg + db * db);
+
+				const float luminanceDelta = Luminance(targetR, targetG, targetB) -
+				                             Luminance(textureR, textureG, textureB);
+				const int chromaDelta = Chroma(targetR, targetG, targetB) -
+				                        Chroma(textureR, textureG, textureB);
+				return rgbDistance + luminanceDelta * luminanceDelta * TextureMatchLuminanceWeight +
+				       static_cast<float>(chromaDelta * chromaDelta) * TextureMatchChromaWeight;
 			}
 		} // namespace
 
@@ -215,13 +248,15 @@ namespace spades {
 			if (it != colorCache.end())
 				return it->second;
 
-			int bestDistance = 0x7fffffff;
+			const int targetR = LightenForTextureMatch(r);
+			const int targetG = LightenForTextureMatch(g);
+			const int targetB = LightenForTextureMatch(b);
+
+			float bestDistance = 1.0e30F;
 			BlockTextureRef best = InvalidBlockTextureRef();
 			for (const auto& texture : textures) {
-				int dr = int(r) - int(texture.avgR);
-				int dg = int(g) - int(texture.avgG);
-				int db = int(b) - int(texture.avgB);
-				int dist = dr * dr + dg * dg + db * db;
+				const float dist = TextureMatchDistance(targetR, targetG, targetB, int(texture.avgR),
+				                                        int(texture.avgG), int(texture.avgB));
 				if (dist < bestDistance) {
 					bestDistance = dist;
 					best = texture.ref;
