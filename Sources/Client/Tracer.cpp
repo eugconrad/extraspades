@@ -142,7 +142,7 @@ namespace spades {
 		}
 
 		Tracer::~Tracer() {
-			client.GetExtraFeatures().BulletTrails().UnregisterTracer(ownerPlayerId, this);
+			client.GetExtraFeatures().UnregisterTracer(ownerPlayerId, this);
 		}
 	} // namespace client
 } // namespace spades

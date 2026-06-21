@@ -130,7 +130,7 @@ namespace spades {
 
 		bool Client::WantsToBeClosed() { return readyToClose; }
 		bool Client::IsNoclipEnabled() const {
-			return extraFeatures && extraFeatures->Camera().IsNoclipEnabled();
+			return extraFeatures && extraFeatures->IsNoclipEnabled();
 		}
 		void Client::Closing() { SPADES_MARK_FUNCTION(); }
 
@@ -693,7 +693,7 @@ namespace spades {
 
 				bool localPlayerIsAlive = p.IsAlive();
 				bool localPlayerIsSpectator = p.IsSpectator();
-				bool noclipActive = extraFeatures->Camera().IsNoclipEnabled();
+				bool noclipActive = extraFeatures->IsNoclipEnabled();
 				bool localPlayerIsSpectating =
 				  localPlayerIsSpectator || staffSpectating || noclipActive;
 				bool isStaff = activeNet->GetGameProperties()->isStaff;
@@ -1059,7 +1059,7 @@ namespace spades {
 				} else if (CheckKey(cg_keyAutoFocus, name) && down && cg_manualFocus) {
 					autoFocusEnabled = true;
 				} else if ((name == "WheelUp" || name == "WheelDown") && down) {
-					if (extraFeatures->Camera().HandleAdsWheel(name.c_str()))
+					if (extraFeatures->HandleAdsWheel(name))
 						return;
 
 					// When DoF control is enabled,

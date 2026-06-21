@@ -20,6 +20,7 @@ namespace spades {
 		class ExtraBulletTrails;
 		class ExtraFeedbackEffects;
 		class ExtraGrenadePreview;
+		class Tracer;
 
 		class ExtraClientFeatures {
 			Client& client;
@@ -45,10 +46,33 @@ namespace spades {
 			const ExtraGrenadePreview& GrenadePreview() const { return grenadePreview; }
 
 			void ResetForWorld();
+			void ClearLocalEntities();
+			void LoadFeedbackSounds();
 			void ClearTransientInputState();
 			bool HandleInputKey(const std::string& name, bool down);
 			void ControllerAxisEvent(float moveX, float moveY, float lookX, float lookY);
 			void Update(float dt);
+
+			bool IsNoclipEnabled() const;
+			void ToggleNoclip();
+			bool UpdateNoclipCamera(float dt);
+			bool HandleAdsWheel(const std::string& name);
+			float ApplyAdsZoomScale(float zoom) const;
+
+			void MergeGamepadPlayerInput(PlayerInput& input) const;
+			void MergeGamepadWeaponInput(WeaponInput& input) const;
+			bool IsGamepadReloadKeyPressed() const;
+
+			void RegisterTracer(int playerId, Tracer* tracer);
+			void UnregisterTracer(int playerId, Tracer* tracer);
+			void AddConfiguredBulletTrail(int ownerPlayerId, Vector3 startPos, Vector3 endPos,
+			                              Vector4 color, WeaponType weaponType);
+
+			void DrawGrenadeWorldTrails();
+			void DrawGrenadeTrajectory();
+			void OnLocalPlayerDied();
+			void OnLocalPlayerKilled(Player& killer, Player& victim, KillType killType);
+			void DrawKillFlash();
 		};
 	} // namespace client
 } // namespace spades

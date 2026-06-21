@@ -1736,7 +1736,7 @@ namespace spades {
 					if (cg_healScreenEffects)
 						DrawScreenEffect(false);
 
-					extraFeatures->Feedback().DrawKillFlash();
+					extraFeatures->DrawKillFlash();
 
 					if (cg_playerNames)
 						DrawHottrackedPlayerName();

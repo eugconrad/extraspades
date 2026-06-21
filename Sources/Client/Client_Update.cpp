@@ -241,7 +241,7 @@ namespace spades {
 					spectatorZoom = false;
 				}
 
-				if (extraFeatures->Camera().IsNoclipEnabled()) {
+				if (extraFeatures->IsNoclipEnabled()) {
 					UpdateLocalSpectator(dt);
 				} else if (localPlayerIsSpectator) {
 					UpdateLocalSpectator(dt);
@@ -442,7 +442,7 @@ namespace spades {
 			auto& freeState = freeCameraState;
 			auto& sharedState = followAndFreeCameraState;
 
-			if (extraFeatures->Camera().UpdateNoclipCamera(dt))
+			if (extraFeatures->UpdateNoclipCamera(dt))
 				return;
 
 			Vector3 lastPos = freeState.position;
@@ -463,7 +463,7 @@ namespace spades {
 			freeState.position = lastPos + freeState.velocity * dt;
 
 			// check collision
-			if (!cg_spectatorNoclip && !extraFeatures->Camera().IsNoclipEnabled()) {
+			if (!cg_spectatorNoclip && !extraFeatures->IsNoclipEnabled()) {
 				GameMap::RayCastResult minResult;
 				float minDist = 1.0E+10F;
 				Vector3 minShift = MakeVector3(0.0F, 0.0F, 0.0F);
@@ -555,9 +555,9 @@ namespace spades {
 			Weapon& weapon = player.GetWeapon();
 
 			PlayerInput inp = playerInput;
-			extraFeatures->Gamepad().MergePlayerInput(inp);
+			extraFeatures->MergeGamepadPlayerInput(inp);
 			WeaponInput winp = weapInput;
-			extraFeatures->Gamepad().MergeWeaponInput(winp);
+			extraFeatures->MergeGamepadWeaponInput(winp);
 
 			// suppress weapon input while pie menu is held
 			if (pieMenuView && pieMenuView->IsOpen())
@@ -633,7 +633,7 @@ namespace spades {
 
 			// send weapon reload
 			if (isToolWeapon && CanLocalPlayerReloadWeapon() &&
-			    (reloadKeyPressed || extraFeatures->Gamepad().IsReloadKeyPressed())) {
+			    (reloadKeyPressed || extraFeatures->IsGamepadReloadKeyPressed())) {
 				// disable zoom while reloading (except for shotgun)
 				if (winp.secondary && !isWeaponShotgun) {
 					winp.secondary = false;
@@ -874,7 +874,7 @@ namespace spades {
 			stmp::optional<const Grenade&> g) {
 			SPADES_MARK_FUNCTION();
 
-			if (g && p.IsLocalPlayer() && !extraFeatures->Camera().IsNoclipEnabled())
+			if (g && p.IsLocalPlayer() && !extraFeatures->IsNoclipEnabled())
 				activeNet->SendGrenade(*g);
 
 			if (!IsMuted()) {
@@ -1001,7 +1001,7 @@ namespace spades {
 				if (curStreak > bestStreak)
 					bestStreak = curStreak;
 				curStreak = 0;
-				extraFeatures->Feedback().OnLocalPlayerDied();
+				extraFeatures->OnLocalPlayerDied();
 			} else {
 				// play hit sound for non local player: see BullethitPlayer
 				if (!IsMuted() && (kt == KillTypeWeapon || kt == KillTypeHeadshot)) {
@@ -1038,7 +1038,7 @@ namespace spades {
 						}
 					}
 
-					extraFeatures->Feedback().OnLocalPlayerKilled(killer, victim, kt);
+					extraFeatures->OnLocalPlayerKilled(killer, victim, kt);
 				}
 			}
 
@@ -1313,7 +1313,7 @@ namespace spades {
 			}
 
 			if (byLocalPlayer) {
-				if (extraFeatures->Camera().IsNoclipEnabled())
+				if (extraFeatures->IsNoclipEnabled())
 					return;
 
 				activeNet->SendHit(hurtPlayer.GetId(), type);
@@ -1528,10 +1528,10 @@ namespace spades {
 			auto tracer = stmp::make_unique<Tracer>(*this, player.GetId(), muzzlePos, hitPos, vel,
 			                                        shotgun, tracerColor);
 			Tracer* tracerPtr = tracer.get();
-			extraFeatures->BulletTrails().RegisterTracer(player.GetId(), tracerPtr);
+			extraFeatures->RegisterTracer(player.GetId(), tracerPtr);
 			AddLocalEntity(std::move(tracer));
 
-			extraFeatures->BulletTrails().AddConfiguredTrail(
+			extraFeatures->AddConfiguredBulletTrail(
 			  player.GetId(), muzzlePos, hitPos, tracerColor, player.GetWeapon().GetWeaponType());
 
 			AddLocalEntity(stmp::make_unique<MapViewTracer>(muzzlePos, hitPos));
@@ -1647,13 +1647,13 @@ namespace spades {
 
 		void Client::LocalPlayerBlockAction(spades::IntVector3 v, BlockActionType type) {
 			SPADES_MARK_FUNCTION();
-			if (extraFeatures->Camera().IsNoclipEnabled())
+			if (extraFeatures->IsNoclipEnabled())
 				return;
 			activeNet->SendBlockAction(v, type);
 		}
 		void Client::LocalPlayerCreatedLineBlock(spades::IntVector3 v1, spades::IntVector3 v2) {
 			SPADES_MARK_FUNCTION();
-			if (extraFeatures->Camera().IsNoclipEnabled())
+			if (extraFeatures->IsNoclipEnabled())
 				return;
 			activeNet->SendBlockLine(v1, v2);
 		}

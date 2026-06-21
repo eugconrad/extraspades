@@ -88,7 +88,7 @@ namespace spades {
 				}
 				return ClientCameraMode::NotJoined;
 			}
-			if (extraFeatures->Camera().IsNoclipEnabled())
+			if (extraFeatures->IsNoclipEnabled())
 				return ClientCameraMode::Free;
 
 			Player& p = maybePlayer.value();
@@ -188,7 +188,7 @@ namespace spades {
 
 			float zoom = 1.0F + (3.0F - 2.0F * powf(aimDownState, 1.5F)) *
 			                     powf(aimDownState, 3.0F) * delta;
-			return extraFeatures->Camera().ApplyAdsZoomScale(zoom);
+			return extraFeatures->ApplyAdsZoomScale(zoom);
 		}
 
 		SceneDefinition Client::CreateSceneDefinition() {
@@ -209,7 +209,7 @@ namespace spades {
 			if (world) {
 				IntVector3 fogColor = world->GetFogColor();
 				renderer->SetFogColor(ConvertColorRGB(fogColor));
-				renderer->SetFogDistance(extraFeatures->Camera().IsNoclipEnabled() ? 2000000.0F
+				renderer->SetFogDistance(extraFeatures->IsNoclipEnabled() ? 2000000.0F
 				                                       : (cg_disableFogVisual ? 1000000.0F
 				                                                            : FOG_DISTANCE));
 
@@ -686,7 +686,7 @@ namespace spades {
 				for (const auto& nade : world->GetAllGrenades())
 					AddGrenadeToScene(*nade);
 
-				extraFeatures->GrenadePreview().DrawWorldTrails();
+				extraFeatures->DrawGrenadeWorldTrails();
 
 				for (const auto& c : corpses) {
 					if ((c->GetCenter() - lastSceneDef.viewOrigin).GetSquaredLength2D() > FOG_DISTANCE_SQ)
@@ -704,7 +704,7 @@ namespace spades {
 
 				if (maybePlayer) { // localplayer exists
 					Player& p = maybePlayer.value();
-					extraFeatures->GrenadePreview().DrawLocalTrajectory();
+					extraFeatures->DrawGrenadeTrajectory();
 
 					// draw block cursor
 					if (p.IsToolBlock() && p.IsReadyToUseTool() && CanLocalPlayerUseTool()) {

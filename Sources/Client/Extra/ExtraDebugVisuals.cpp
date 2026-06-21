@@ -53,7 +53,7 @@ namespace spades {
 				return false;
 
 			if (CheckExtraKey(cg_keyToggleNoclip, name)) {
-				client.GetExtraFeatures().Camera().ToggleNoclip();
+				client.GetExtraFeatures().ToggleNoclip();
 				return true;
 			}
 

@@ -891,7 +891,7 @@ namespace spades {
 			if (soundsNum > 0)
 				SPLog("Loaded %d killstreak sounds", soundsNum);
 
-			extraFeatures->Feedback().LoadSounds();
+			extraFeatures->LoadFeedbackSounds();
 		}
 
 		/** Records chat message/game events to the log file. */

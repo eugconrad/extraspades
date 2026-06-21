@@ -125,7 +125,7 @@ namespace spades {
 			corpses.clear();
 
 			damageIndicators.clear();
-			extraFeatures->BulletTrails().ClearLocalEntities();
+			extraFeatures->ClearLocalEntities();
 			localEntities.clear();
 			bloodMarks->Clear();
 		}
