@@ -926,7 +926,7 @@ namespace spades {
 
 				float const fuse = kGrenadeMaxFuse;
 
-				auto nade = stmp::make_unique<Grenade>(world, muzzle, vel, fuse);
+				auto nade = stmp::make_unique<Grenade>(world, playerId, muzzle, vel, fuse);
 				if (world.GetListener())
 					world.GetListener()->PlayerThrewGrenade(*this, *nade);
 				world.AddGrenade(std::move(nade));
@@ -957,7 +957,7 @@ namespace spades {
 				EstimateGrenadeImpactFuse(world.GetMap(), muzzle, vel, fuse);
 				fuse = Clamp(fuse, 0.0F, kGrenadeMaxFuse);
 
-				auto nade = stmp::make_unique<Grenade>(world, muzzle, vel, fuse);
+				auto nade = stmp::make_unique<Grenade>(world, playerId, muzzle, vel, fuse);
 				if (world.GetListener())
 					world.GetListener()->PlayerThrewGrenade(*this, *nade);
 				world.AddGrenade(std::move(nade));

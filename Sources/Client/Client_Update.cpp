@@ -215,6 +215,9 @@ namespace spades {
 
 			stmp::optional<Player&> maybePlayer = world->GetLocalPlayer();
 
+			bool isDemoMode = IsDemoMode();
+			bool isDemoPaused = isDemoMode && demoNet->IsPaused();
+
 			if (maybePlayer) {
 				Player& player = maybePlayer.value();
 
@@ -309,7 +312,7 @@ namespace spades {
 				int score = player.GetScore();
 				if (score != lastScore)
 					lastScore = score;
-			} else if (IsDemoMode()) {
+			} else if (isDemoMode) {
 				// In demo mode with no local player, still update spectator camera
 				UpdateLocalSpectator(dt);
 			}
@@ -317,9 +320,7 @@ namespace spades {
 			extraFeatures->Update(dt);
 
 			// Check if demo is paused - freeze game objects but allow camera movement
-			bool demoPaused = IsDemoMode() && demoNet && demoNet->IsPaused();
-
-			if (!demoPaused) {
+			if (!isDemoPaused) {
 #if 0
 				// dynamic time step
 				// physics diverges from server
@@ -346,7 +347,6 @@ namespace spades {
 					worldSubFrameFast -= step;
 				}
 #endif
-
 				// update player view (doesn't affect physics/game logics)
 				for (const auto& clientPlayer : clientPlayers) {
 					if (clientPlayer)
@@ -368,6 +368,8 @@ namespace spades {
 						}
 					}
 				};
+
+				// run corpse update concurrently while the main thread processes other entities
 				CorpseUpdateDispatch corpseDispatch{*this, gameplayDt};
 				corpseDispatch.Start();
 
@@ -383,8 +385,44 @@ namespace spades {
 						localEntities.erase(it);
 				}
 
+				// update blood marks
 				bloodMarks->Update(gameplayDt);
+
+				// wait for corpse update to finish
 				corpseDispatch.Join();
+
+				// update grenade tracers
+				const auto& grenades = world->GetAllGrenades();
+				for (auto it = grenadeTracers.begin(); it != grenadeTracers.end();) {
+					if (it->second.fadeTime >= 0) {
+						it->second.fadeTime -= dt;
+						it = (it->second.fadeTime <= 0) ? grenadeTracers.erase(it) : std::next(it);
+						continue;
+					}
+					bool found = false;
+					for (const auto& nade : grenades) {
+						if (nade.get() == it->first) {
+							found = true;
+							break;
+						}
+					}
+					if (!found)
+						it->second.fadeTime = it->second.fadeDuration;
+					++it;
+				}
+				for (const auto& nade : grenades) {
+					auto& trace = grenadeTracers[nade.get()];
+					if (trace.positions.empty()) {
+						auto ownerPlayer = world->GetPlayer(nade->GetOwnerId());
+						if (ownerPlayer)
+							trace.color = ConvertColorRGB(ownerPlayer->GetColor());
+					}
+					trace.positions.push_back(nade->GetPosition());
+				}
+
+				// spawn snow particles when christmas season is active
+				if (isChristmasOn)
+					EmitSnowflakes(lastSceneDef.viewOrigin);
 			}
 
 			if (grenadeVibration > 0.0F) {
@@ -671,9 +709,9 @@ namespace spades {
 				SetSelectedTool(t);
 			}
 
-			// send position/orientaion updates
+			// send position/orientation updates
 			{
-				float POSITION_UPDATE_RATE = 1.0F;             // 1/s
+				float POSITION_UPDATE_RATE = 1.0F;			   // 1/s
 				float ORIENTATION_UPDATE_RATE = 1.0F / 120.0F; // 120/s
 
 				Vector3 curPos = player.GetPosition();
@@ -711,6 +749,12 @@ namespace spades {
 
 #pragma mark - IWorldListener Handlers
 
+		void Client::EmitSoundIndicator(Vector3 pos, SoundType type) {
+			if (!IsDemoMode())
+				return;
+			AddLocalEntity(std::make_unique<SoundIndicatorEntity>(*this, pos, type));
+		}
+
 		void Client::PlayerObjectSet(int id) {
 			if (clientPlayers[id])
 				clientPlayers[id] = nullptr;
@@ -728,18 +772,35 @@ namespace spades {
 					? audioDevice->RegisterSound("Sounds/Player/WaterJump.opus")
 					: audioDevice->RegisterSound("Sounds/Player/Jump.opus");
 				audioDevice->Play(c.GetPointerOrNull(), p.GetOrigin(), AudioParam());
+
+				if (!IsInFirstPersonView(p.GetId()))
+					EmitSoundIndicator(p.GetOrigin(), SoundType::Movement);
 			}
 		}
 
 		void Client::PlayerLanded(spades::client::Player& p, bool hurt) {
 			SPADES_MARK_FUNCTION();
 
+			auto cameraMode = GetCameraMode();
+
 			if (!IsMuted()) {
-				Handle<IAudioChunk> c = hurt
-					? audioDevice->RegisterSound("Sounds/Player/FallHurt.opus")
-					: (p.GetWade() ? audioDevice->RegisterSound("Sounds/Player/WaterLand.opus")
-						: audioDevice->RegisterSound("Sounds/Player/Land.opus"));
-				audioDevice->Play(c.GetPointerOrNull(), p.GetOrigin(), AudioParam());
+				const auto& origin = p.GetOrigin();
+
+				Handle<IAudioChunk> c = p.GetWade()
+					? audioDevice->RegisterSound("Sounds/Player/WaterLand.opus")
+					: audioDevice->RegisterSound("Sounds/Player/Land.opus");
+				audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+
+				if (hurt) {
+					c = audioDevice->RegisterSound("Sounds/Player/FallHurt.opus");
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+				}
+
+				// register sound
+				if (HasTargetPlayer(cameraMode) && GetCameraTargetPlayerId() == p.GetId()) {
+					if (!IsFirstPerson(cameraMode))
+						EmitSoundIndicator(origin, SoundType::Movement);
+				}
 			}
 		}
 
@@ -763,15 +824,24 @@ namespace spades {
 				float sprintState = clientPlayers[p.GetId()]
 					? clientPlayers[p.GetId()]->GetSprintState() : 0.0F;
 
+				const auto& origin = p.GetOrigin();
+
 				Handle<IAudioChunk> c =
 				  audioDevice->RegisterSound(SampleRandomElement(p.GetWade() ? wsnds : snds));
-				audioDevice->Play(c.GetPointerOrNull(), p.GetOrigin(), AudioParam());
+				audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+
+				bool isFirstPerson = IsInFirstPersonView(p.GetId());
+				if (!isFirstPerson)
+					EmitSoundIndicator(origin, SoundType::Movement);
 
 				if (sprintState > 0.5F && !p.GetWade()) {
 					AudioParam param;
 					param.volume *= sprintState;
 					c = audioDevice->RegisterSound(SampleRandomElement(rsnds));
-					audioDevice->Play(c.GetPointerOrNull(), p.GetOrigin(), param);
+					audioDevice->Play(c.GetPointerOrNull(), origin, param);
+
+					if (!isFirstPerson)
+						EmitSoundIndicator(origin, SoundType::Movement);
 				}
 			}
 		}
@@ -779,8 +849,11 @@ namespace spades {
 		void Client::PlayerFiredWeapon(spades::client::Player& p) {
 			SPADES_MARK_FUNCTION();
 
-			if (IsInFirstPersonView(p.GetId()))
+			if (IsInFirstPersonView(p.GetId())) {
 				localFireVibrationTime = time;
+			} else {
+				EmitSoundIndicator(p.GetEye(), SoundType::Action);
+			}
 
 			clientPlayers.at(p.GetId())->FiredWeapon();
 		}
@@ -799,25 +872,42 @@ namespace spades {
 
 			if (!IsMuted()) {
 				Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Weapons/DryFire.opus");
-				if (p.IsLocalPlayer())
-					audioDevice->PlayLocal(c.GetPointerOrNull(), MakeVector3(0.4F, -0.3F, 0.5F),
-										   AudioParam());
-				else
-					audioDevice->Play(c.GetPointerOrNull(),
-									  p.GetEye() + p.GetFront() * 0.5F - p.GetUp() * 0.3F +
-										p.GetRight() * 0.4F,
-									  AudioParam());
+				if (p.IsLocalPlayer()) {
+					audioDevice->PlayLocal(c.GetPointerOrNull(),
+						MakeVector3(0.4F, -0.3F, 0.5F), AudioParam());
+				} else {
+					const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.5F
+						- p.GetUp() * 0.3F
+						+ p.GetRight() * 0.4F;
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+					EmitSoundIndicator(origin, SoundType::Action);
+				}
 			}
 		}
 
 		void Client::PlayerReloadingWeapon(spades::client::Player& p) {
 			SPADES_MARK_FUNCTION();
 
+			if (!IsInFirstPersonView(p.GetId()))
+				EmitSoundIndicator(p.GetEye()
+						+ p.GetFront() * 0.4F
+						- p.GetUp() * -0.3F
+						+ p.GetRight() * 0.5F,
+						SoundType::Action);
+
 			clientPlayers.at(p.GetId())->ReloadingWeapon();
 		}
 
 		void Client::PlayerReloadedWeapon(spades::client::Player& p) {
 			SPADES_MARK_FUNCTION();
+
+			if (!IsInFirstPersonView(p.GetId()))
+				EmitSoundIndicator(p.GetEye()
+						+ p.GetFront() * 0.4F
+						- p.GetUp() * -0.3F
+						+ p.GetRight() * 0.5F,
+						SoundType::Action);
 
 			clientPlayers.at(p.GetId())->ReloadedWeapon();
 		}
@@ -829,11 +919,15 @@ namespace spades {
 				return; // played by ClientPlayer::Update
 
 			if (!IsMuted()) {
+				const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.5F
+						- p.GetUp() * 0.3F
+						+ p.GetRight() * 0.4F;
 				Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Weapons/Switch.opus");
-				audioDevice->Play(c.GetPointerOrNull(),
-								  p.GetEye() + p.GetFront() * 0.5F - p.GetUp() * 0.3F +
-									p.GetRight() * 0.4F,
-								  AudioParam());
+				audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+
+				if (!IsInFirstPersonView(p.GetId()))
+					EmitSoundIndicator(origin, SoundType::Action);
 			}
 		}
 
@@ -845,10 +939,15 @@ namespace spades {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.4F, -0.3F, 0.5F), AudioParam());
 				} else {
+					const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.5F
+						- p.GetUp() * 0.3F
+						+ p.GetRight() * 0.4F;
 					c = audioDevice->RegisterSound("Sounds/Weapons/Restock.opus");
-					audioDevice->Play(c.GetPointerOrNull(),
-						p.GetEye() + p.GetFront() * 0.5F - p.GetUp() * 0.3F +
-						p.GetRight() * 0.4F, AudioParam());
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+
+					if (!IsInFirstPersonView(p.GetId()))
+						EmitSoundIndicator(origin, SoundType::Action);
 				}
 			}
 		}
@@ -863,9 +962,14 @@ namespace spades {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.4F, -0.3F, 0.5F), AudioParam());
 				} else {
-					audioDevice->Play(c.GetPointerOrNull(),
-						p.GetEye() + p.GetFront() * 0.9F - p.GetUp() * 0.2F +
-						p.GetRight() * 0.3F, AudioParam());
+					const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.9F
+						- p.GetUp() * 0.2F
+						+ p.GetRight() * 0.3F;
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+
+					if (!IsInFirstPersonView(p.GetId()))
+						EmitSoundIndicator(origin, SoundType::Action);
 				}
 			}
 		}
@@ -884,9 +988,12 @@ namespace spades {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.4F, 0.1F, 0.3F), AudioParam());
 				} else {
-					audioDevice->Play(c.GetPointerOrNull(),
-						p.GetEye() + p.GetFront() * 0.9F - p.GetUp() * 0.2F +
-						p.GetRight() * 0.3F, AudioParam());
+					const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.9F
+						- p.GetUp() * 0.2F
+						+ p.GetRight() * 0.3F;
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+					EmitSoundIndicator(origin, SoundType::Action);
 				}
 			}
 		}
@@ -901,9 +1008,11 @@ namespace spades {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.2F, -0.1F, 0.7F), AudioParam());
 				} else {
-					audioDevice->Play(c.GetPointerOrNull(),
-						p.GetOrigin() + p.GetFront() * 0.9F +
-						p.GetUp() * 1.25F, AudioParam());
+					const auto& origin = p.GetEye()
+						+ p.GetFront() * 0.9F
+						- p.GetUp() * 1.25F;
+					audioDevice->Play(c.GetPointerOrNull(), origin, AudioParam());
+					EmitSoundIndicator(origin, SoundType::Action);
 				}
 			}
 		}
@@ -948,6 +1057,9 @@ namespace spades {
 					audioDevice->Play(c.GetPointerOrNull(), shiftedHitPos, AudioParam());
 				}
 			}
+
+			if (!IsInFirstPersonView(p.GetId()))
+				EmitSoundIndicator(hitPos, SoundType::Action);
 		}
 
 		void Client::PlayerKilledPlayer(spades::client::Player& killer,
@@ -1174,7 +1286,7 @@ namespace spades {
 
 			// create ragdoll corpse
 			if (cg_ragdoll) {
-				auto corp = stmp::make_unique<Corpse>(*renderer, *map, victim);
+				auto corp = stmp::make_unique<Corpse>(*renderer, *map, victim, isChristmasOn);
 
 				if (kt == KillTypeGrenade) {
 					corp->AddImpulse(MakeVector3(0, 0, -4.0F - SampleRandomFloat() * 4.0F));
@@ -1638,7 +1750,7 @@ namespace spades {
 					param.referenceDistance = 3.0F;
 					IntVector3 outPos;
 					Vector3 soundPos = origin;
-					if (world->GetMap()->CastRay(soundPos, MakeVector3(0, 0, 1), 8.0F, outPos))
+					if (map->CastRay(soundPos, MakeVector3(0, 0, 1), 8.0F, outPos))
 						soundPos.z = (float)outPos.z - 0.2F;
 					audioDevice->Play(c.GetPointerOrNull(), soundPos, param);
 				}

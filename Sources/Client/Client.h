@@ -44,6 +44,8 @@
 #include <Core/VersionInfo.h>
 #include <Gui/View.h>
 
+#include "SoundIndicatorEntity.h"
+
 namespace spades {
 	class IStream;
 	class Stopwatch;
@@ -134,8 +136,16 @@ namespace spades {
 			// key release, avoiding one expensive reset/replay per repeat tick.
 			bool demoSeekForwardHeld = false;
 			bool demoSeekBackwardHeld = false;
-			float demoSeekRepeatTimer = 0.0f;   // accumulates dt between preview steps
-			float demoSeekPendingTime = 0.0f;   // target time to commit on key release
+			float demoSeekRepeatTimer = 0.0F;	// accumulates dt between preview steps
+			float demoSeekPendingTime = 0.0F;	// target time to commit on key release
+			bool demoHudVisible = true;
+
+			// Automated one-shot follow for menuless demo replay (--replay-demo):
+			// once the world has loaded the requested player is followed. Unused
+			// unless EnableDemoReplayFollow() has been called.
+			bool demoReplayFollowPending = false;
+			std::string demoReplayFollowSpec; // empty = first player; else id or name
+
 			std::string playerName;
 			std::unique_ptr<IStream> logStream;
 
@@ -220,6 +230,30 @@ namespace spades {
 			};
 			HitStats hitStats;
 
+			// Net-graph history ring buffer.
+			// Sampled once per frame; stores the last kNetGraphSamples measurements.
+			static constexpr int kNetGraphSamples = 128;
+			struct NetGraphSample {
+				float downKbps;
+				float upKbps;
+				float pingMs;
+			};
+			struct NetGraphSampler {
+				NetGraphSample samples[kNetGraphSamples]{};
+				int head = 0; // next write index
+				float accumTime = 0.0F;
+
+				void Push(const NetGraphSample& s) {
+					samples[head] = s;
+					head = (head + 1) % kNetGraphSamples;
+				}
+				// Index 0 = oldest, index (kNetGraphSamples-1) = newest
+				const NetGraphSample& At(int i) const {
+					return samples[(head + i) % kNetGraphSamples];
+				}
+			};
+			NetGraphSampler netGraph;
+
 			float worldSetTime;
 
 			bool reloadKeyPressed;
@@ -282,9 +316,18 @@ namespace spades {
 			float grenadeVibration;
 			float grenadeVibrationSlow;
 			bool scoreboardVisible;
+			bool netgraphVisible;
 			bool hudVisible;
 			bool flashlightOn;
 			float flashlightOnTime;
+
+			struct GrenadeTracer {
+				std::vector<Vector3> positions;
+				float fadeTime = -1.0F;
+				float fadeDuration = 0.3F;
+				Vector3 color = MakeVector3(1.0F, 0.0F, 0.0F);
+			};
+			std::unordered_map<Grenade*, GrenadeTracer> grenadeTracers;
 
 			CoherentNoiseSampler1D coherentNoiseSamplers[3];
 			void KickCamera(float strength);
@@ -293,10 +336,10 @@ namespace spades {
 			float lastSnowDropTime;
 
 			float hotBarIconState;
-
+			
 			float hitFeedbackIconState;
 			bool hitFeedbackFriendly;
-
+			
 			float debugHitTestZoomState;
 			bool debugHitTestZoom;
 
@@ -381,7 +424,7 @@ namespace spades {
 			Player& GetCameraTargetPlayer();
 
 			bool IsInFirstPersonView(int playerId);
-
+			
 			/**
 			 * Calculate the zoom value incorporating the effect of ADS for a first-person view.
 			 *
@@ -394,7 +437,6 @@ namespace spades {
 			void CaptureColor();
 
 			bool inGameLimbo;
-			bool HasLocalPlayer();
 			bool IsLimboViewActive();
 			void CloseLimboView();
 			void SpawnPressed();
@@ -412,6 +454,7 @@ namespace spades {
 			void MuzzleFire(Vector3, bool smoke = true);
 			void BulletHitWaterSurface(Vector3);
 			void EmitSnowflakes(Vector3);
+			void EmitSoundIndicator(Vector3, SoundType type);
 
 			// drawings
 			Handle<FontManager> fontManager;
@@ -468,6 +511,8 @@ namespace spades {
 			void Draw2D();
 			void Draw2DWithoutWorld();
 			void Draw2DWithWorld();
+			
+			Vector4 GetHUDColor(Player&);
 
 			/** Called when the local player is alive. */
 			void DrawJoinedAlivePlayerHUD();
@@ -505,6 +550,7 @@ namespace spades {
 			void DrawAlert();
 			void DrawDebugAim(Player&);
 			void DrawStats();
+			void DrawNetGraph();
 			void DrawHitTestDebugger();
 			void DrawPlayerStats();
 
@@ -521,6 +567,10 @@ namespace spades {
 			std::string ScreenShotPath();
 			void TakeScreenShot(bool sceneOnly, bool scoreboardOnly = false);
 
+			// Demo helpers (see EnableDemoReplayFollow).
+			void UpdateDemoReplayFollow();
+			int ResolveDemoPlayer(const std::string& spec);
+
 			std::string BuildDemoContext();
 
 			std::string MapShotPath();
@@ -536,9 +586,18 @@ namespace spades {
 				const ServerAddress& host, Handle<FontManager>,
 				const std::string& demoPath = "");
 
+			bool HasLocalPlayer();
 			bool IsDemoMode() const { return demoNet != nullptr; }
 			DemoNetClient* GetDemoNetClient() { return demoNet.get(); }
 			void ReloadDemo();
+
+			/**
+			 * Auto-follows a player once the demo world has loaded (empty = first
+			 * player; otherwise a player id or name) and keeps normal playback
+			 * running. Used by menuless demo replay (--replay-demo). Only
+			 * meaningful when the client was created with a demo path.
+			 */
+			void EnableDemoReplayFollow(const std::string& playerSpec);
 
 			void RunFrame(float dt) override;
 			void RunFrameLate(float dt) override;
@@ -590,6 +649,7 @@ namespace spades {
 			bool WantsToBeClosed() override;
 			bool IsMuted();
 			bool IsScoreboardVisible() { return scoreboardVisible; }
+			bool IsNetgraphVisible() { return netgraphVisible; }
 
 			void PlayerSentChatMessage(Player&, bool global, const std::string&);
 			void ServerSentMessage(bool system, const std::string&);

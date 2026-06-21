@@ -16,7 +16,7 @@
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with ZeroSpades.  If not, see <http://www.gnu.org/licenses/>.
+ along with ZeroSpades.	 If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -40,6 +40,8 @@
 #include <Core/Strings.h>
 #include <Core/TMPUtils.h>
 #include "IWorldListener.h"
+
+SPADES_SETTING(cg_keyDemoPlayPause);
 
 namespace spades {
 	namespace client {
@@ -68,7 +70,7 @@ namespace spades {
 				void PlayerHitBlockWithSpade(Player&, Vector3, IntVector3, IntVector3) override {}
 				void PlayerKilledPlayer(Player&, Player&, KillType) override {}
 				void BulletHitPlayer(Player&, HitType, Vector3, Player&,
-				                     std::unique_ptr<IBulletHitScanState>&) override {}
+									 std::unique_ptr<IBulletHitScanState>&) override {}
 				void BulletNearPlayer(Player&) override {}
 				void BulletHitBlock(Vector3, IntVector3, IntVector3) override {}
 				void AddBulletTracer(Player&, Vector3, Vector3) override {}
@@ -85,8 +87,8 @@ namespace spades {
 
 
 		DemoNetClient::DemoNetClient(Client* c) : client(c), status(NetClientStatusNotConnected),
-		    expectedMapSize(0), receivedMapBytes(0),
-		    recordedLocalPlayerId(-1), seekingMode(false) {
+			expectedMapSize(0), receivedMapBytes(0),
+			recordedLocalPlayerId(-1), seekingMode(false) {
 			SPADES_MARK_FUNCTION();
 
 			demoPlayer.reset(new DemoPlayer());
@@ -144,7 +146,7 @@ namespace spades {
 			// Check if demo finished - auto-pause when complete
 			if (demoPlayer->IsFinished() && status == NetClientStatusConnected && !demoPlayer->IsPaused()) {
 				SPLog("Demo playback finished");
-				statusString = _Tr("NetClient", "Demo finished - press P to replay");
+				statusString = _Tr("NetClient", "Demo finished - press [{0}] to replay", ToUpperCase(cg_keyDemoPlayPause));
 				demoPlayer->Pause();
 			}
 		}
@@ -207,9 +209,7 @@ namespace spades {
 			}
 		}
 
-		stmp::optional<World&> DemoNetClient::GetWorld() {
-			return client->GetWorld();
-		}
+		stmp::optional<World&> DemoNetClient::GetWorld() { return client->GetWorld(); }
 
 		stmp::optional<Player&> DemoNetClient::GetPlayerOrNull(int pId) {
 			SPADES_MARK_FUNCTION();
@@ -345,7 +345,7 @@ namespace spades {
 						float fuse = r.ReadFloat();
 						Vector3 pos = r.ReadVector3();
 						Vector3 vel = r.ReadVector3();
-						Grenade* g = new Grenade(*GetWorld(), pos, vel, fuse);
+						Grenade* g = new Grenade(*GetWorld(), pId, pos, vel, fuse);
 						GetWorld()->AddGrenade(std::unique_ptr<Grenade>{g});
 					}
 					break;
@@ -792,7 +792,7 @@ namespace spades {
 						client->PlayerDropIntel(*p);
 				} break;
 				case PacketTypeRestock: {
-					r.ReadByte();
+					r.ReadByte(); // skip player id
 					if (recordedLocalPlayerId >= 0) {
 						auto p = GetPlayerOrNull(recordedLocalPlayerId);
 						if (p) p->Restock();
@@ -800,7 +800,7 @@ namespace spades {
 				} break;
 				case PacketTypeFogColour: {
 					if (GetWorld()) {
-						r.ReadByte();
+						r.ReadByte(); // skip alpha value
 						GetWorld()->SetFogColor(r.ReadIntColor());
 					}
 				} break;
@@ -824,7 +824,7 @@ namespace spades {
 					// These packets are ignored in demo playback
 					break;
 				case PacketTypePlayerProperties: {
-					int subId = r.ReadByte();
+					r.ReadByte(); // skip subId
 					int pId = r.ReadByte();
 					int hp = r.ReadByte();
 					int blocks = r.ReadByte();
@@ -894,14 +894,15 @@ namespace spades {
 
 		float DemoNetClient::GetMapReceivingProgress() {
 			if (status != NetClientStatusReceivingMap || !mapLoader)
-				return 0.0f;
+				return 0.0F;
 			return mapLoader->GetProgress();
 		}
 
 		std::string DemoNetClient::GetStatusString() {
 			if (status == NetClientStatusReceivingMap && mapLoader) {
 				float progress = mapLoader->GetProgress();
-				return Format("{0} ({1}%)", statusString, (int)(progress * 100.0f));
+				int per = (int)(progress * 100.0F);
+				return _Tr("NetClient", "Loading map from demo ({0}%)", per);
 			}
 			return statusString;
 		}
@@ -936,21 +937,21 @@ namespace spades {
 
 			try {
 				demoPlayer->ReplayUpTo(targetTime,
-				    [this](const std::vector<char>& data, float dt) {
-					    ProcessPacket(data);
-					    // Age world physics in fixed steps so grenade fuses, falling
-					    // blocks, etc. resolve at their correct demo timestamps under
-					    // the silent listener instead of firing after replay finishes.
-					    if (auto w = GetWorld()) {
-						    const float step = 1.0f / 60.0f;
-						    while (dt >= step) {
-							    w->Advance(step);
-							    dt -= step;
-						    }
-						    if (dt > 0.0f)
-							    w->Advance(dt);
-					    }
-				    });
+					[this](const std::vector<char>& data, float dt) {
+						ProcessPacket(data);
+						// Age world physics in fixed steps so grenade fuses, falling
+						// blocks, etc. resolve at their correct demo timestamps under
+						// the silent listener instead of firing after replay finishes.
+						if (auto w = GetWorld()) {
+							const float step = 1.0F / 60.0F;
+							while (dt >= step) {
+								w->Advance(step);
+								dt -= step;
+							}
+							if (dt > 0.0F)
+								w->Advance(dt);
+						}
+					});
 			} catch (...) {
 				if (GetWorld())
 					GetWorld()->SetListener(savedListener);
@@ -992,14 +993,14 @@ namespace spades {
 		void DemoNetClient::SeekToBeginning() {
 			if (!demoPlayer) return;
 
-			if (initialMap && demoPlayer->GetTime() > 0.0f) {
+			if (initialMap && demoPlayer->GetTime() > 0.0F) {
 				auto view = client->SaveViewState();
 				ResetWorldForReplay();
 				FastReplay(demoPlayer->GetBootstrapEndTime());
 				client->RestoreViewState(view);
 			}
 
-			demoPlayer->Seek(0.0f);
+			demoPlayer->Seek(0.0F);
 			demoPlayer->Resume();
 			statusString = _Tr("NetClient", "Playing demo");
 		}

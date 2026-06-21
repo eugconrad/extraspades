@@ -15,7 +15,7 @@
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ along with OpenSpades.	 If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -137,9 +137,7 @@ namespace spades {
 					if (IsDemoMode()) {
 						if (followedPlayerId >= 0 && world->GetPlayer(followedPlayerId))
 							return followedPlayerId;
-						if (demoNet)
-							return demoNet->GetRecordedLocalPlayerId();
-						return 0;
+						return demoNet->GetRecordedLocalPlayerId();
 					}
 					return world->GetLocalPlayerIndex().value();
 				case ClientCameraMode::FirstPersonLocal:
@@ -238,7 +236,8 @@ namespace spades {
 
 				def.blurVignette = 0.0F;
 
-				switch (GetCameraMode()) {
+				auto cameraMode = GetCameraMode();
+				switch (cameraMode) {
 					case ClientCameraMode::None: SPUnreachable();
 					case ClientCameraMode::NotJoined: {
 						// get highest solid block at map's center
@@ -528,7 +527,7 @@ namespace spades {
 				def.zNear = 0.05F;
 				def.skipWorld = false;
 			} else {
-				SPAssert(GetCameraMode() == ClientCameraMode::None);
+				SPAssert(cameraMode == ClientCameraMode::None);
 
 				// Let there be darkness
 				def.viewOrigin = MakeVector3(0, 0, 0);
@@ -654,8 +653,8 @@ namespace spades {
 				for (int i = 0; i < tc.GetNumTerritories(); i++) {
 					TCGameMode::Territory& t = tc.GetTerritory(i);
 					IntVector3 col = (t.ownerTeamId >= NEUTRAL_TEAM)
-					                   ? MakeIntVector3(255, 255, 255)
-					                   : world->GetTeamColor(t.ownerTeamId);
+									   ? MakeIntVector3(255, 255, 255)
+									   : world->GetTeamColor(t.ownerTeamId);
 
 					ModelRenderParam param;
 					param.customColor = ConvertColorRGB(col);
@@ -775,10 +774,88 @@ namespace spades {
 					}
 				}
 
-				if (isChristmasOn)
-					EmitSnowflakes(lastSceneDef.viewOrigin);
+				// draw grenade prediction/tracers
+				if (IsDemoMode()) {
+					const float frameStep = 1.0F / 60.0F;
+
+					Vector4 crossColor = MakeVector4(1, 0, 0, 1);
+					auto drawCross = [&](Vector3 p, float size, Vector4 col) {
+						renderer->AddDebugLine(Vector3{p.x - size, p.y, p.z},
+											   Vector3{p.x + size, p.y, p.z}, col);
+						renderer->AddDebugLine(Vector3{p.x, p.y - size, p.z},
+											   Vector3{p.x, p.y + size, p.z}, col);
+						renderer->AddDebugLine(Vector3{p.x, p.y, p.z - size},
+											   Vector3{p.x, p.y, p.z + size}, col);
+					};
+
+					// draw trayectory
+					if (FollowsNonLocalPlayer(GetCameraMode())) {
+						auto cameraPlayer = world->GetPlayer(GetCameraTargetPlayerId());
+						if (cameraPlayer) {
+							Player& p = cameraPlayer.value();
+							if (p.IsAlive() && p.IsToolGrenade() && p.IsReadyToUseTool()) {
+								const float fuseTime = 3.0F;
+								const float fuse = fuseTime - p.GetGrenadeCookTime();
+								const float maxTime = p.IsCookingGrenade() ? fuse : fuseTime;
+
+								const Vector3 dir = p.GetFront();
+								const Vector3 muzzle = p.GetEye() + (dir * 0.1F);
+								const Vector3 vel = dir + p.GetVelocity();
+
+								Grenade sim(*world, -1, muzzle, vel, fuse);
+								Vector3 prev = sim.GetPosition();
+
+								for (float t = 0.0F; t < maxTime; t += frameStep) {
+									float dt = std::min(frameStep, maxTime - t);
+									int ret = sim.MoveGrenade(dt);
+									if (ret == -1) break;
+
+									const Vector3 cur = sim.GetPosition();
+									const float progress = std::min(t / fuseTime, 1.0F);
+									const float alpha = std::min(progress / 0.1F, 1.0F);
+									const Vector4 color = {1.0F, 1.0F, 0.0F, alpha};
+
+									renderer->AddDebugLine(prev, cur, color);
+									prev = cur;
+								}
+
+								drawCross(prev, 0.2F, crossColor);
+							}
+						}
+					}
+
+					// draw tracers
+					for (const auto& [nade, trace] : grenadeTracers) {
+						bool alive = trace.fadeTime < 0.0F;
+						float fade = alive ? 1.0F : (trace.fadeTime / trace.fadeDuration);
+						if (fade <= 0.0F)
+							continue;
+
+						int numPositions =	static_cast<int>(trace.positions.size());
+						for (int i = 1; i < numPositions; i++) {
+							float progress = float(i) / float(numPositions);
+							Vector4 color = MakeVector4(trace.color.x, trace.color.y, trace.color.z, progress * fade);
+							renderer->AddDebugLine(trace.positions[i - 1], trace.positions[i], color);
+						}
+
+						if (alive) {
+							const float fuse = nade->GetFuse();
+							Grenade sim(*world, -1, nade->GetPosition(), nade->GetVelocity(), fuse);
+							Vector3 prev = sim.GetPosition();
+
+							for (float t = 0.0F; t < fuse; t += frameStep) {
+								int ret = sim.MoveGrenade(frameStep);
+								if (ret == -1) break;
+								prev = sim.GetPosition();
+							}
+
+							drawCross(prev, 0.2F, crossColor);
+						}
+					}
+				}
 			}
 
+			// draw lights (e.g. muzzle fire, grenade explosions, flashlight)
 			for (const auto& lights : flashDlights)
 				renderer->AddLight(lights);
 			flashDlightsOld.clear();

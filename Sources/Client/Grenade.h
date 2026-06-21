@@ -15,7 +15,7 @@
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ along with OpenSpades.	 If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -29,6 +29,7 @@ namespace spades {
 
 		class Grenade {
 			World& world;
+			int ownerId;
 			float fuse;
 			Vector3 position;
 			Vector3 velocity;
@@ -39,16 +40,17 @@ namespace spades {
 
 			void Explode();
 
-			/** @return -1 if dropped under water, non-zero if bounced, 2 when sound should be
-			 * played. */
-			int MoveGrenade(float fsynctics);
-
 		public:
-			Grenade(World&, Vector3 pos, Vector3 vel, float fuse);
+			Grenade(World&, int ownerId, Vector3 pos, Vector3 vel, float fuse);
+			int GetOwnerId() const { return ownerId; }
 			~Grenade();
 
 			/** @return true when exploded. */
 			bool Update(float dt);
+
+			/** @return -1 if dropped under water, non-zero if bounced, 2 when sound should be
+			 * played. */
+			int MoveGrenade(float fsynctics);
 
 			Vector3 GetPosition() const { return position; }
 			Vector3 GetVelocity() const { return velocity; }

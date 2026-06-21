@@ -127,7 +127,10 @@ namespace spades {
 			damageIndicators.clear();
 			extraFeatures->ClearLocalEntities();
 			localEntities.clear();
-			bloodMarks->Clear();
+			grenadeTracers.clear();
+			
+			if (bloodMarks)
+				bloodMarks->Clear();
 		}
 
 		stmp::optional<std::tuple<Player&, hitTag_t>> Client::HotTrackedPlayer() {

@@ -45,7 +45,7 @@ namespace spades {
 			@this.ui = ui;
 			@helper = ui.helper;
 
-			float mainWidth = size.x - 250.0F;
+			float mainWidth = size.x - 220.0F;
 
 			{
 				spades::ui::TextViewer e(Manager);
@@ -59,7 +59,7 @@ namespace spades {
 			AddLabel(0.0F, 0.0F, 24.0F, _Tr("StartupScreen", "Resolution"));
 			{
 				StartupScreenGraphicsDisplayResolutionEditor e(ui);
-				e.Bounds = AABB2(110.0F, 0.0F, 124.0F, 24.0F);
+				e.Bounds = AABB2(160.0F, 0.0F, 124.0F, 24.0F);
 				AddChild(e);
 				@resEdit = e;
 			}
@@ -67,7 +67,8 @@ namespace spades {
 			{
 				spades::ui::CheckBox e(Manager);
 				e.Caption = _Tr("StartupScreen", "Fullscreen Mode");
-				e.Bounds = AABB2(240.0F, 0.0F, 200.0F, 24.0F);
+				float capSize = ui.fontManager.GuiFont.Measure(e.Caption).x;
+				e.Bounds = AABB2(290.0F, 0.0F, capSize + 18.0F, 24.0F);
 				HelpHandler(
 					helpView,
 					_Tr("StartupScreen",
@@ -83,7 +84,7 @@ namespace spades {
 			{
 				spades::ui::RadioButton e(Manager);
 				e.Caption = _Tr("StartupScreen", "OpenGL");
-				e.Bounds = AABB2(110.0F, 30.0F, 140.0F, 24.0F);
+				e.Bounds = AABB2(160.0F, 30.0F, 140.0F, 24.0F);
 				e.GroupName = "driver";
 				HelpHandler(
 					helpView,
@@ -98,7 +99,7 @@ namespace spades {
 			{
 				spades::ui::RadioButton e(Manager);
 				e.Caption = _Tr("StartupScreen", "Software");
-				e.Bounds = AABB2(260.0F, 30.0F, 140.0F, 24.0F);
+				e.Bounds = AABB2(310.0F, 30.0F, 140.0F, 24.0F);
 				e.GroupName = "driver";
 				HelpHandler(
 					helpView,
@@ -462,7 +463,7 @@ namespace spades {
 			@this.ui = ui;
 			@helper = ui.helper;
 
-			float mainWidth = size.x - 250.0F;
+			float mainWidth = size.x - 220.0F;
 
 			{
 				spades::ui::TextViewer e(Manager);
@@ -477,7 +478,7 @@ namespace spades {
 			{
 				spades::ui::RadioButton e(Manager);
 				e.Caption = _Tr("StartupScreen", "OpenAL");
-				e.Bounds = AABB2(100.0F, 0.0F, 100.0F, 24.0F);
+				e.Bounds = AABB2(160.0F, 0.0F, 100.0F, 24.0F);
 				e.GroupName = "driver";
 				HelpHandler(
 					helpView,
@@ -494,7 +495,7 @@ namespace spades {
 				spades::ui::RadioButton e(Manager);
 				//! The name of audio driver that outputs no audio.
 				e.Caption = _Tr("StartupScreen", "Null");
-				e.Bounds = AABB2(210.0F, 0.0F, 100.0F, 24.0F);
+				e.Bounds = AABB2(270.0F, 0.0F, 100.0F, 24.0F);
 				e.GroupName = "driver";
 				HelpHandler(helpView, _Tr("StartupScreen", "Disables audio output.")).Watch(e);
 				@e.Activated = spades::ui::EventHandler(this.OnDriverNull);
@@ -535,7 +536,7 @@ namespace spades {
 			{
 				StartupScreenAudioOpenALEditor e(ui);
 				AddChild(e);
-				e.Bounds = AABB2(160.0F, 120.0F, 354.0F, 24.0F);
+				e.Bounds = AABB2(160.0F, 120.0F, 380.0F, 24.0F);
 				@editOpenAL = e;
 			}
 		}
@@ -583,7 +584,7 @@ namespace spades {
 			{
 				StartupScreenDropdownListDropdownButton e(Manager);
 				AddChild(e);
-				e.Bounds = AABB2(0.0F, 0.0F, 354.0F, 24.0F);
+				e.Bounds = AABB2(0.0F, 0.0F, 380.0F, 24.0F);
 				@e.Activated = spades::ui::EventHandler(this.ShowDropdown);
 				@dropdownButton = e;
 			}
@@ -635,6 +636,7 @@ namespace spades {
 		private spades::ui::CheckBox@ buttonAutoRecord;
 		private spades::ui::CheckBox@ buttonAutoPrune;
 		private spades::ui::Field@ fieldMaxDemos;
+
 		private ConfigItem cg_demoAutoRecord("cg_demoAutoRecord");
 		private ConfigItem cg_demoAutoPrune("cg_demoAutoPrune");
 		private ConfigItem cg_demoMaxFiles("cg_demoMaxFiles");
@@ -643,6 +645,8 @@ namespace spades {
 			super(ui.manager);
 			@this.ui = ui;
 			@helper = ui.helper;
+			
+			float mainWidth = size.x - 240.0F;
 
 			string label = _Tr("StartupScreen", "Language");
 			if (label != "Language")
@@ -652,7 +656,7 @@ namespace spades {
 			{
 				StartupScreenLocaleEditor e(ui);
 				AddChild(e);
-				e.Bounds = AABB2(160.0F, 0.0F, 348.0F, 24.0F);
+				e.Bounds = AABB2(160.0F, 0.0F, 380.0F, 24.0F);
 				@editLocale = e;
 			}
 
@@ -660,7 +664,7 @@ namespace spades {
 			{
 				spades::ui::Button button(Manager);
 				button.Caption = _Tr("StartupScreen", "Reset All Settings");
-				button.Bounds = AABB2(160.0F, 30.0F, 350.0F, 30.0F);
+				button.Bounds = AABB2(160.0F, 30.0F, 380.0F, 30.0F);
 				@button.Activated = spades::ui::EventHandler(this.OnResetSettingsPressed);
 				AddChild(button);
 			}
@@ -674,42 +678,43 @@ namespace spades {
 				} else {
 					button.Caption = _Tr("StartupScreen", "Browse Config Folder");
 				}
-				button.Bounds = AABB2(160.0F, 66.0F, 350.0F, 30.0F);
+				button.Bounds = AABB2(160.0F, 66.0F, 380.0F, 30.0F);
 				@button.Activated = spades::ui::EventHandler(this.OnBrowseUserDirectoryPressed);
 				AddChild(button);
 			}
 
 			AddLabel(0.0F, 108.0F, 24.0F, _Tr("StartupScreen", "Demo Recording"));
 			{
-				spades::ui::CheckBox chk(Manager);
-				chk.Caption = _Tr("StartupScreen", "Automatically record every game");
-				chk.Bounds = AABB2(160.0F, 108.0F, 350.0F, 24.0F);
-				@chk.Activated = spades::ui::EventHandler(this.OnAutoRecordChanged);
-				AddChild(chk);
-				@buttonAutoRecord = chk;
+				spades::ui::CheckBox button(Manager);
+				button.Caption = _Tr("StartupScreen", "Automatically record every game");
+				button.Bounds = AABB2(0.0F, 138.0F, mainWidth, 20.0F);
+				@button.Activated = spades::ui::EventHandler(this.OnAutoRecordChanged);
+				AddChild(button);
+				@buttonAutoRecord = button;
 			}
-
-			AddLabel(0.0F, 138.0F, 24.0F, _Tr("StartupScreen", "Auto-delete old demos"));
 			{
-				spades::ui::CheckBox chk(Manager);
-				chk.Caption = _Tr("StartupScreen", "Delete oldest demos when limit is reached");
-				chk.Bounds = AABB2(160.0F, 138.0F, 350.0F, 24.0F);
-				@chk.Activated = spades::ui::EventHandler(this.OnAutoPruneChanged);
-				AddChild(chk);
-				@buttonAutoPrune = chk;
+				spades::ui::CheckBox button(Manager);
+				button.Caption = _Tr("StartupScreen", "Delete oldest demos when limit is reached");
+				button.Bounds = AABB2(0.0F, 168.0F, mainWidth, 20.0F);
+				@button.Activated = spades::ui::EventHandler(this.OnAutoPruneChanged);
+				AddChild(button);
+				@buttonAutoPrune = button;
 			}
-
-			AddLabel(0.0F, 168.0F, 24.0F, _Tr("StartupScreen", "Max stored demos"));
 			{
-				spades::ui::Field fld(Manager);
-				fld.Bounds = AABB2(160.0F, 168.0F, 80.0F, 24.0F);
-				fld.DenyNonAscii = true;
-				@fld.Changed = spades::ui::EventHandler(this.OnMaxDemosChanged);
-				AddChild(fld);
-				@fieldMaxDemos = fld;
+				string caption = _Tr("StartupScreen", "Max stored demos");
+				Vector2 labelSize = ui.fontManager.GuiFont.Measure(caption);
+				AddLabel(0.0F, 198.0F, 24.0F, caption);
+
+				spades::ui::Field field(Manager);
+				field.Bounds = AABB2(labelSize.x + 8.0F, 198.0F, 40.0F, 24.0F);
+				field.DenyNonAscii = true;
+				field.TextOrigin.y *= 0.5F;
+				@field.Changed = spades::ui::EventHandler(this.OnMaxDemosChanged);
+				AddChild(field);
+				@fieldMaxDemos = field;
 			}
 
-			AddLabel(0.0F, 204.0F, 30.0F, _Tr("StartupScreen", "Demos Folder"));
+			AddLabel(0.0F, 234.0F, 30.0F, _Tr("StartupScreen", "Demos Folder"));
 			{
 				spades::ui::Button button(Manager);
 				string osType = helper.OperatingSystemType;
@@ -720,7 +725,7 @@ namespace spades {
 				} else {
 					button.Caption = _Tr("StartupScreen", "Browse Demos Folder");
 				}
-				button.Bounds = AABB2(160.0F, 204.0F, 350.0F, 30.0F);
+				button.Bounds = AABB2(160.0F, 234.0F, 380.0F, 30.0F);
 				@button.Activated = spades::ui::EventHandler(this.OnBrowseDemosFolderPressed);
 				AddChild(button);
 			}
@@ -838,7 +843,7 @@ namespace spades {
 			{
 				StartupScreenDropdownListDropdownButton e(Manager);
 				AddChild(e);
-				e.Bounds = AABB2(0.0F, 0.0F, 348.0F, 24.0F);
+				e.Bounds = AABB2(0.0F, 0.0F, 380.0F, 24.0F);
 				@e.Activated = spades::ui::EventHandler(this.ShowDropdown);
 				@dropdownButton = e;
 			}
@@ -933,7 +938,7 @@ namespace spades {
 			@this.ui = ui;
 			@helper = ui.helper;
 
-			float mainWidth = size.x - 250.0F;
+			float mainWidth = size.x - 220.0F;
 
 			{
 				spades::ui::TextViewer e(Manager);
