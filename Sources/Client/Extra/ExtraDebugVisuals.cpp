@@ -16,7 +16,7 @@
 
 DEFINE_SPADES_SETTING(cg_keyToggleFog, "i");
 DEFINE_SPADES_SETTING(cg_disableFogVisual, "0");
-DEFINE_SPADES_SETTING(cg_keyToggleNoclip, "p");
+DEFINE_SPADES_SETTING(cg_keyToggleNoclip, "u");
 
 namespace spades {
 	namespace client {

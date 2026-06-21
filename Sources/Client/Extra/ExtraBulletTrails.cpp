@@ -14,10 +14,10 @@
 #include <algorithm>
 #include <vector>
 
-DEFINE_SPADES_SETTING(cg_tracersPerPlayerMax, "5");
+DEFINE_SPADES_SETTING(cg_tracersPerPlayerMax, "15");
 DEFINE_SPADES_SETTING(cg_trailLogsPerPlayerMax, "10");
 DEFINE_SPADES_SETTING(cg_trailLogLifetime, "5");
-DEFINE_SPADES_SETTING(cg_trailLogs, "1");
+DEFINE_SPADES_SETTING(cg_trailLogs, "0");
 
 namespace spades {
 	namespace client {

@@ -15,12 +15,12 @@
 #include <algorithm>
 #include <string>
 
-DEFINE_SPADES_SETTING(cg_customKillSounds, "0");
-DEFINE_SPADES_SETTING(cg_customKillSoundsGain, "1.0");
+DEFINE_SPADES_SETTING(cg_customKillSounds, "1");
+DEFINE_SPADES_SETTING(cg_customKillSoundsGain, "0.5");
 DEFINE_SPADES_SETTING(cg_customMultiKillWindow, "8.0");
 DEFINE_SPADES_SETTING(cg_killFlash, "1");
-DEFINE_SPADES_SETTING(cg_killFlashDuration, "0.18");
-DEFINE_SPADES_SETTING(cg_killFlashAlpha, "1.0");
+DEFINE_SPADES_SETTING(cg_killFlashDuration, "0.5");
+DEFINE_SPADES_SETTING(cg_killFlashAlpha, "0.5");
 
 namespace spades {
 	namespace client {

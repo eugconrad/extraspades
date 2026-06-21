@@ -16,8 +16,8 @@
 #include <string>
 
 DEFINE_SPADES_SETTING(cg_adsZoomMin, "1.0");
-DEFINE_SPADES_SETTING(cg_adsZoomMax, "2.5");
-DEFINE_SPADES_SETTING(cg_adsZoomStep, "0.3");
+DEFINE_SPADES_SETTING(cg_adsZoomMax, "5.0");
+DEFINE_SPADES_SETTING(cg_adsZoomStep, "0.25");
 
 namespace spades {
 	namespace client {

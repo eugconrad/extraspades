@@ -19,7 +19,7 @@ DEFINE_SPADES_SETTING(cg_grenadeTrajectory, "1");
 DEFINE_SPADES_SETTING(cg_grenadeTrajectoryStep, "0.033");
 DEFINE_SPADES_SETTING(cg_grenadeTrajectoryMaxPoints, "96");
 DEFINE_SPADES_SETTING(cg_grenadeTrail, "1");
-DEFINE_SPADES_SETTING(cg_grenadeTrailPersist, "5");
+DEFINE_SPADES_SETTING(cg_grenadeTrailPersist, "15");
 DEFINE_SPADES_SETTING(cg_grenadeTrailMaxPoints, "96");
 
 namespace spades {

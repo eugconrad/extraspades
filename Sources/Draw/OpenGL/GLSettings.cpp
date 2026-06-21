@@ -67,9 +67,9 @@ DEFINE_SPADES_SETTING(r_srgb, "0");
 DEFINE_SPADES_SETTING(r_srgb2D, "1");
 DEFINE_SPADES_SETTING(r_ssao, "0");
 DEFINE_SPADES_SETTING(r_temporalAA, "0");
-DEFINE_SPADES_SETTING(r_textured_blocks, "0");
-DEFINE_SPADES_SETTING(r_textured_blocks_brightness, "0.75");
-DEFINE_SPADES_SETTING(r_textured_blocks_tint, "0.25");
+DEFINE_SPADES_SETTING(r_textured_blocks, "1");
+DEFINE_SPADES_SETTING(r_textured_blocks_brightness, "0.8");
+DEFINE_SPADES_SETTING(r_textured_blocks_tint, "0.0");
 DEFINE_SPADES_SETTING(r_textured_blocks_damage, "0.75");
 DEFINE_SPADES_SETTING(r_water, "2");
 
