@@ -74,6 +74,10 @@ namespace spades {
 			TypedItemHandle<bool> r_srgb2D              { *this, "r_srgb2D", ItemFlags::Latch };
 			TypedItemHandle<int> r_ssao                 { *this, "r_ssao", ItemFlags::Latch };
 			TypedItemHandle<bool> r_temporalAA          { *this, "r_temporalAA" };
+			TypedItemHandle<bool> r_textured_blocks     { *this, "r_textured_blocks", ItemFlags::Latch };
+			TypedItemHandle<float> r_textured_blocks_brightness { *this, "r_textured_blocks_brightness" };
+			TypedItemHandle<float> r_textured_blocks_tint { *this, "r_textured_blocks_tint" };
+			TypedItemHandle<float> r_textured_blocks_damage { *this, "r_textured_blocks_damage" };
 			TypedItemHandle<int> r_water                { *this, "r_water", ItemFlags::Latch };
 			// clang-format on
 

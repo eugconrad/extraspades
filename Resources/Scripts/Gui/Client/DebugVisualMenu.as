@@ -187,6 +187,15 @@ namespace spades {
 			layouter.AddToggleField("Disable visual fog", "cg_disableFogVisual");
 			layouter.AddControl("Toggle fog hotkey", "cg_keyToggleFog");
 
+			layouter.AddHeading("Textured Blocks");
+			layouter.AddToggleField("Enable textured blocks", "r_textured_blocks");
+			layouter.AddSliderField("Texture brightness", "r_textured_blocks_brightness",
+			                         0.25F, 1.5F, 0.05F, ConfigNumberFormatter(2, "x"));
+			layouter.AddSliderField("Original color tint", "r_textured_blocks_tint",
+			                         0.0F, 1.0F, 0.05F, ConfigNumberFormatter(2, ""));
+			layouter.AddSliderField("Damage fade strength", "r_textured_blocks_damage",
+			                         0.0F, 1.5F, 0.05F, ConfigNumberFormatter(2, ""));
+
 			layouter.AddHeading("Noclip Camera");
 			layouter.AddControl("Toggle noclip camera", "cg_keyToggleNoclip");
 			layouter.AddToggleField("Spectator camera noclip", "cg_spectatorNoclip");

@@ -33,6 +33,12 @@ attribute vec2 ambientOcclusionCoordAttribute;
 // [R, G, B, diffuse]
 attribute vec4 colorAttribute;
 
+// [u, v]
+attribute vec2 textureCoordAttribute;
+
+// block damage amount
+attribute float damageAttribute;
+
 // [nx, ny, nz]
 attribute vec3 normalAttribute;
 
@@ -40,6 +46,8 @@ attribute vec3 normalAttribute;
 attribute vec3 fixedPositionAttribute;
 
 varying vec2 ambientOcclusionCoord;
+varying vec2 textureCoord;
+varying float blockDamage;
 varying vec4 color;
 varying vec3 fogDensity;
 
@@ -57,6 +65,8 @@ void main() {
 	
 	// ambient occlusion
 	ambientOcclusionCoord = (ambientOcclusionCoordAttribute + 0.5) * (1.0 / 256.0);
+	textureCoord = textureCoordAttribute;
+	blockDamage = damageAttribute;
 	
 	color = colorAttribute;
 	color.xyz *= color.xyz; // linearize

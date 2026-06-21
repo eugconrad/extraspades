@@ -19,6 +19,7 @@
  */
 
 #include "GLMapRenderer.h"
+#include "BlockTextureMapper.h"
 #include "GLDynamicLightShader.h"
 #include "GLImage.h"
 #include "GLMapChunk.h"
@@ -73,6 +74,13 @@ namespace spades {
 			backfaceProgram = renderer.RegisterProgram("Shaders/OpenGL/BackFaceBlock.program");
 			outlinesProgram = renderer.RegisterProgram("Shaders/OpenGL/BasicBlockOutlines.program");
 			aoImage = renderer.RegisterImage("Gfx/AmbientOcclusion.png").Cast<GLImage>();
+			blockTextureMapper.reset(new BlockTextureMapper(device));
+
+			SPLog("Textured blocks: renderer setting r_textured_blocks is %s",
+			      renderer.GetSettings().r_textured_blocks ? "enabled" : "disabled");
+			if (renderer.GetSettings().r_textured_blocks && !blockTextureMapper->IsReady()) {
+				SPLog("Textured blocks: fallback to flat-color map renderer");
+			}
 
 			static const uint8_t squareVertices[] = {0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1};
 			squareVertexBuffer = device.GenBuffer();
@@ -114,6 +122,15 @@ namespace spades {
 					yy < numChunkHeight && zz < numChunkDepth)
 					GetChunk(xx, yy, zz)->SetNeedsUpdate();
 			}
+		}
+
+		BlockTextureMapper* GLMapRenderer::GetBlockTextureMapper() {
+			return blockTextureMapper.get();
+		}
+
+		bool GLMapRenderer::ShouldRenderTexturedBlocks() {
+			return renderer.GetSettings().r_textured_blocks && blockTextureMapper &&
+			       blockTextureMapper->IsReady();
 		}
 
 		void GLMapRenderer::RealizeChunks(spades::Vector3 eye) {
@@ -193,7 +210,15 @@ namespace spades {
 				IGLDevice::TextureMinFilter, IGLDevice::Linear);
 
 			device.ActiveTexture(1);
-			device.BindTexture(IGLDevice::Texture2D, 0);
+			if (ShouldRenderTexturedBlocks()) {
+				blockTextureMapper->BindAtlas();
+				device.TexParamater(IGLDevice::Texture2D,
+				                    IGLDevice::TextureMinFilter, IGLDevice::LinearMipmapNearest);
+				device.TexParamater(IGLDevice::Texture2D,
+				                    IGLDevice::TextureMagFilter, IGLDevice::Nearest);
+			} else {
+				device.BindTexture(IGLDevice::Texture2D, 0);
+			}
 
 			device.Enable(IGLDevice::CullFace, true);
 			device.Enable(IGLDevice::DepthTest, true);
@@ -217,17 +242,49 @@ namespace spades {
 			aoUniform(basicProgram);
 			aoUniform.SetValue(0);
 
+			static GLProgramUniform blockTextureAtlas("blockTextureAtlas");
+			blockTextureAtlas(basicProgram);
+			if (blockTextureAtlas.IsActive())
+				blockTextureAtlas.SetValue(1);
+
+			static GLProgramUniform texturedBlocksEnabled("texturedBlocksEnabled");
+			texturedBlocksEnabled(basicProgram);
+			if (texturedBlocksEnabled.IsActive())
+				texturedBlocksEnabled.SetValue(ShouldRenderTexturedBlocks() ? 1 : 0);
+
+			static GLProgramUniform texturedBlockBrightness("texturedBlockBrightness");
+			texturedBlockBrightness(basicProgram);
+			if (texturedBlockBrightness.IsActive())
+				texturedBlockBrightness.SetValue(
+				  static_cast<float>(renderer.GetSettings().r_textured_blocks_brightness));
+
+			static GLProgramUniform texturedBlockTint("texturedBlockTint");
+			texturedBlockTint(basicProgram);
+			if (texturedBlockTint.IsActive())
+				texturedBlockTint.SetValue(
+				  static_cast<float>(renderer.GetSettings().r_textured_blocks_tint));
+
+			static GLProgramUniform texturedBlockDamage("texturedBlockDamage");
+			texturedBlockDamage(basicProgram);
+			if (texturedBlockDamage.IsActive())
+				texturedBlockDamage.SetValue(
+				  static_cast<float>(renderer.GetSettings().r_textured_blocks_damage));
+
 			device.BindBuffer(IGLDevice::ArrayBuffer, 0);
 
 			static GLProgramAttribute positionAttribute("positionAttribute");
 			static GLProgramAttribute ambientOcclusionCoordAttribute("ambientOcclusionCoordAttribute");
 			static GLProgramAttribute colorAttribute("colorAttribute");
+			static GLProgramAttribute textureCoordAttribute("textureCoordAttribute");
+			static GLProgramAttribute damageAttribute("damageAttribute");
 			static GLProgramAttribute normalAttribute("normalAttribute");
 			static GLProgramAttribute fixedPositionAttribute("fixedPositionAttribute");
 
 			positionAttribute(basicProgram);
 			ambientOcclusionCoordAttribute(basicProgram);
 			colorAttribute(basicProgram);
+			textureCoordAttribute(basicProgram);
+			damageAttribute(basicProgram);
 			normalAttribute(basicProgram);
 			fixedPositionAttribute(basicProgram);
 
@@ -235,6 +292,10 @@ namespace spades {
 			if (ambientOcclusionCoordAttribute() != -1)
 				device.EnableVertexAttribArray(ambientOcclusionCoordAttribute(), true);
 			device.EnableVertexAttribArray(colorAttribute(), true);
+			if (textureCoordAttribute() != -1)
+				device.EnableVertexAttribArray(textureCoordAttribute(), true);
+			if (damageAttribute() != -1)
+				device.EnableVertexAttribArray(damageAttribute(), true);
 			if (normalAttribute() != -1)
 				device.EnableVertexAttribArray(normalAttribute(), true);
 			device.EnableVertexAttribArray(fixedPositionAttribute(), true);
@@ -285,6 +346,10 @@ namespace spades {
 			if (ambientOcclusionCoordAttribute() != -1)
 				device.EnableVertexAttribArray(ambientOcclusionCoordAttribute(), false);
 			device.EnableVertexAttribArray(colorAttribute(), false);
+			if (textureCoordAttribute() != -1)
+				device.EnableVertexAttribArray(textureCoordAttribute(), false);
+			if (damageAttribute() != -1)
+				device.EnableVertexAttribArray(damageAttribute(), false);
 			if (normalAttribute() != -1)
 				device.EnableVertexAttribArray(normalAttribute(), false);
 			device.EnableVertexAttribArray(fixedPositionAttribute(), false);

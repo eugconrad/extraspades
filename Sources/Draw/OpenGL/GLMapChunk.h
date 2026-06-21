@@ -32,12 +32,14 @@ namespace spades {
 	namespace draw {
 		class GLMapRenderer;
 		class IGLDevice;
+		struct BlockTextureRef;
 		class GLMapChunk {
 			struct Vertex {
 				uint8_t x, y, z;
 				uint8_t pad;
 
 				uint16_t aoX, aoY;
+				uint16_t texX, texY;
 
 				uint8_t colorRed;
 				uint8_t colorGreen;
@@ -45,7 +47,7 @@ namespace spades {
 				uint8_t shading;
 
 				int8_t nx, ny, nz;
-				uint8_t pad2;
+				uint8_t damage;
 
 				int8_t sx, sy, sz;
 				uint8_t pad3;
@@ -71,7 +73,8 @@ namespace spades {
 			uint8_t calcAOID(int x, int y, int z, int ux, int uy, int uz, int vx, int vy, int vz);
 
 			void EmitVertex(int aoX, int aoY, int aoZ, int x, int y, int z, int ux, int uy, int vx,
-			                int vy, uint32_t color, int nx, int ny, int nz);
+			                int vy, uint32_t color, const BlockTextureRef& texture, int nx, int ny,
+			                int nz);
 
 			bool IsSolid(int x, int y, int z);
 

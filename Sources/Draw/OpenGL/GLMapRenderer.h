@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "GLDynamicLight.h"
 #include "IGLDevice.h"
 #include <Client/IGameMapListener.h>
@@ -32,6 +34,7 @@ namespace spades {
 		class GLMapChunk;
 		class GLProgram;
 		class GLImage;
+		class BlockTextureMapper;
 		class GLMapRenderer {
 
 			friend class GLMapChunk;
@@ -47,6 +50,7 @@ namespace spades {
 			GLProgram* outlinesProgram;
 
 			Handle<GLImage> aoImage;
+			std::unique_ptr<BlockTextureMapper> blockTextureMapper;
 
 			IGLDevice::UInteger squareVertexBuffer;
 
@@ -89,6 +93,8 @@ namespace spades {
 			void GameMapChanged(int x, int y, int z, client::GameMap*);
 
 			client::GameMap* GetMap() { return gameMap; }
+			BlockTextureMapper* GetBlockTextureMapper();
+			bool ShouldRenderTexturedBlocks();
 
 			void Realize();
 			void Prerender();

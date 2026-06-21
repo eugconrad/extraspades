@@ -20,6 +20,8 @@
 
 varying vec4 color;
 varying vec2 ambientOcclusionCoord;
+varying vec2 textureCoord;
+varying float blockDamage;
 varying vec3 fogDensity;
 
 varying vec3 viewSpaceCoord;
@@ -29,6 +31,11 @@ varying vec3 reflectionDir;
 uniform vec3 viewSpaceLight;
 
 uniform sampler2D ambientOcclusionTexture;
+uniform sampler2D blockTextureAtlas;
+uniform int texturedBlocksEnabled;
+uniform float texturedBlockBrightness;
+uniform float texturedBlockTint;
+uniform float texturedBlockDamage;
 uniform vec3 fogColor;
 
 float VisibilityOfSunLight();
@@ -41,6 +48,14 @@ float CookTorrance(vec3 eyeVec, vec3 lightVec, vec3 normal);
 void main() {
 	// color is linear
 	gl_FragColor = vec4(color.xyz, 1.0);
+	if (texturedBlocksEnabled != 0) {
+		gl_FragColor.xyz = mix(vec3(1.0), color.xyz, texturedBlockTint);
+		vec3 textureColor = texture2D(blockTextureAtlas, textureCoord).xyz;
+		textureColor = mix(textureColor, vec3(0.5), clamp(blockDamage * texturedBlockDamage, 0.0, 1.0));
+		textureColor *= textureColor; // linearize
+		textureColor *= texturedBlockBrightness;
+		gl_FragColor.xyz *= textureColor;
+	}
 
 	float ao = texture2D(ambientOcclusionTexture, ambientOcclusionCoord).x;
 	vec3 diffuseShading = EvaluateAmbientLight(ao);

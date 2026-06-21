@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "BlockTextureMapper.h"
 #include "GLDynamicLightShader.h"
 #include "GLMapChunk.h"
 #include "GLMapRenderer.h"
@@ -127,7 +128,8 @@ namespace spades {
 		 * @param z Chunk local Z coordinate
 		 */
 		void GLMapChunk::EmitVertex(int x, int y, int z, int aoX, int aoY, int aoZ,
-			int ux, int uy, int vx, int vy, uint32_t color, int nx, int ny, int nz) {
+			int ux, int uy, int vx, int vy, uint32_t color, const BlockTextureRef& texture,
+			int nx, int ny, int nz) {
 			SPADES_MARK_FUNCTION_DEBUG();
 
 			int uz = (ux == 0 && uy == 0) ? 1 : 0;
@@ -157,6 +159,7 @@ namespace spades {
 			inst.nx = nx;
 			inst.ny = ny;
 			inst.nz = nz;
+			inst.damage = static_cast<uint8_t>((color >> 24) & 0xff);
 
 			// fixed position to avoid self-shadow glitch
 			inst.sx = (x << 1) + ux + vx;
@@ -165,6 +168,7 @@ namespace spades {
 
 			unsigned int aoTexX = (aoID & 15) * 16;
 			unsigned int aoTexY = (aoID >> 4) * 16;
+			bool rotateWallTexture = texture.valid && nz == 0;
 
 			uint16_t idx = (uint16_t)vertices.size();
 			inst.x = x;
@@ -172,6 +176,8 @@ namespace spades {
 			inst.z = z;
 			inst.aoX = aoTexX;
 			inst.aoY = aoTexY;
+			inst.texX = texture.valid ? (rotateWallTexture ? texture.u1 : texture.u0) : 0;
+			inst.texY = texture.valid ? texture.v0 : 0;
 			vertices.push_back(inst);
 
 			inst.x = x + ux;
@@ -179,6 +185,8 @@ namespace spades {
 			inst.z = z + uz;
 			inst.aoX = aoTexX + 15;
 			inst.aoY = aoTexY;
+			inst.texX = texture.valid ? texture.u1 : 0;
+			inst.texY = texture.valid ? (rotateWallTexture ? texture.v1 : texture.v0) : 0;
 			vertices.push_back(inst);
 
 			inst.x = x + vx;
@@ -186,6 +194,8 @@ namespace spades {
 			inst.z = z + vz;
 			inst.aoX = aoTexX;
 			inst.aoY = aoTexY + 15;
+			inst.texX = texture.valid ? texture.u0 : 0;
+			inst.texY = texture.valid ? (rotateWallTexture ? texture.v0 : texture.v1) : 0;
 			vertices.push_back(inst);
 
 			inst.x = x + ux + vx;
@@ -193,6 +203,8 @@ namespace spades {
 			inst.z = z + uz + vz;
 			inst.aoX = aoTexX + 15;
 			inst.aoY = aoTexY + 15;
+			inst.texX = texture.valid ? (rotateWallTexture ? texture.u0 : texture.u1) : 0;
+			inst.texY = texture.valid ? texture.v1 : 0;
 			vertices.push_back(inst);
 
 			indices.push_back(idx);
@@ -247,24 +259,44 @@ namespace spades {
 							continue;
 
 						uint32_t col = map->GetColor(xx, yy, zz);
+						uint8_t textureR = static_cast<uint8_t>(col);
+						uint8_t textureG = static_cast<uint8_t>(col >> 8);
+						uint8_t textureB = static_cast<uint8_t>(col >> 16);
+
+						int health = col >> 24;
+						uint32_t damage = static_cast<uint32_t>(
+							Clamp((100 - health) * 255 / 68, 0, 255));
+						col = (col & 0x00ffffffUL) | (damage << 24);
 
 						// apply block darkening
-						int health = col >> 24;
 						uint32_t f = (std::max(health, 32) << 8) / 100;
-						col = DarkenColor(col, f);
+						if (!renderer.ShouldRenderTexturedBlocks())
+							col = DarkenColor(col, f);
+
+						BlockTextureRef texture = {0, 0, 0, 0, false};
+						if (renderer.ShouldRenderTexturedBlocks()) {
+							texture = renderer.GetBlockTextureMapper()->GetTextureForColor(
+								textureR, textureG, textureB);
+						}
 
 						if (!IsSolid(xx, yy, zz + 1))
-							EmitVertex(x + 1, y, z + 1, xx, yy, zz + 1, -1, 0, 0, 1, col, 0, 0, 1);
+							EmitVertex(x + 1, y, z + 1, xx, yy, zz + 1, -1, 0, 0, 1, col, texture,
+							           0, 0, 1);
 						if (!IsSolid(xx, yy, zz - 1))
-							EmitVertex(x, y, z, xx, yy, zz - 1, 1, 0, 0, 1, col, 0, 0, -1);
+							EmitVertex(x, y, z, xx, yy, zz - 1, 1, 0, 0, 1, col, texture,
+							           0, 0, -1);
 						if (!IsSolid(xx - 1, yy, zz))
-							EmitVertex(x, y + 1, z, xx - 1, yy, zz, 0, 0, 0, -1, col, -1, 0, 0);
+							EmitVertex(x, y + 1, z, xx - 1, yy, zz, 0, 0, 0, -1, col, texture,
+							           -1, 0, 0);
 						if (!IsSolid(xx + 1, yy, zz))
-							EmitVertex(x + 1, y, z, xx + 1, yy, zz, 0, 0, 0, 1, col, 1, 0, 0);
+							EmitVertex(x + 1, y, z, xx + 1, yy, zz, 0, 0, 0, 1, col, texture,
+							           1, 0, 0);
 						if (!IsSolid(xx, yy - 1, zz))
-							EmitVertex(x, y, z, xx, yy - 1, zz, 0, 0, 1, 0, col, 0, -1, 0);
+							EmitVertex(x, y, z, xx, yy - 1, zz, 0, 0, 1, 0, col, texture,
+							           0, -1, 0);
 						if (!IsSolid(xx, yy + 1, zz))
-							EmitVertex(x + 1, y + 1, z, xx, yy + 1, zz, 0, 0, -1, 0, col, 0, 1, 0);
+							EmitVertex(x + 1, y + 1, z, xx, yy + 1, zz, 0, 0, -1, 0, col,
+							           texture, 0, 1, 0);
 					}
 				}
 			}
@@ -401,12 +433,16 @@ namespace spades {
 			static GLProgramAttribute positionAttribute("positionAttribute");
 			static GLProgramAttribute ambientOcclusionCoordAttribute("ambientOcclusionCoordAttribute");
 			static GLProgramAttribute colorAttribute("colorAttribute");
+			static GLProgramAttribute textureCoordAttribute("textureCoordAttribute");
+			static GLProgramAttribute damageAttribute("damageAttribute");
 			static GLProgramAttribute normalAttribute("normalAttribute");
 			static GLProgramAttribute fixedPositionAttribute("fixedPositionAttribute");
 
 			positionAttribute(basicProgram);
 			ambientOcclusionCoordAttribute(basicProgram);
 			colorAttribute(basicProgram);
+			textureCoordAttribute(basicProgram);
+			damageAttribute(basicProgram);
 			normalAttribute(basicProgram);
 			fixedPositionAttribute(basicProgram);
 
@@ -419,6 +455,12 @@ namespace spades {
 				                           (void*)(uintptr_t)asOFFSET(Vertex, aoX));
 			device.VertexAttribPointer(colorAttribute(), 4, IGLDevice::UnsignedByte, true,
 			                           sizeof(Vertex), (void*)(uintptr_t)asOFFSET(Vertex, colorRed));
+			if (textureCoordAttribute() != -1)
+				device.VertexAttribPointer(textureCoordAttribute(), 2, IGLDevice::UnsignedShort, true,
+				                           sizeof(Vertex), (void*)(uintptr_t)asOFFSET(Vertex, texX));
+			if (damageAttribute() != -1)
+				device.VertexAttribPointer(damageAttribute(), 1, IGLDevice::UnsignedByte, true,
+				                           sizeof(Vertex), (void*)(uintptr_t)asOFFSET(Vertex, damage));
 			if (normalAttribute() != -1)
 				device.VertexAttribPointer(normalAttribute(), 3, IGLDevice::Byte, false,
 				                           sizeof(Vertex), (void*)(uintptr_t)asOFFSET(Vertex, nx));
