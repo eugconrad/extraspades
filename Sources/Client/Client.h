@@ -68,7 +68,6 @@ namespace spades {
 		class MapView;
 		class ScoreboardView;
 		class LimboView;
-		class DebugMenuView;
 		class Player;
 		class PaletteView;
 		class TCProgressView;
@@ -82,7 +81,6 @@ namespace spades {
 		class Client : public IWorldListener, public gui::View {
 			friend class ScoreboardView;
 			friend class LimboView;
-			friend class DebugMenuView;
 			friend class MapView;
 			friend class FallingBlock;
 			friend class PaletteView;
@@ -159,7 +157,6 @@ namespace spades {
 			std::unique_ptr<MapView> largeMapView;
 			std::unique_ptr<ScoreboardView> scoreboard;
 			std::unique_ptr<LimboView> limbo;
-			std::unique_ptr<DebugMenuView> debugMenu;
 			std::unique_ptr<PaletteView> paletteView;
 			std::unique_ptr<TCProgressView> tcView;
 			Handle<IImage> debugHitTestImage;
@@ -403,12 +400,9 @@ namespace spades {
 			void CaptureColor();
 
 			bool inGameLimbo;
-			bool debugMenuOpen;
 			bool HasLocalPlayer();
 			bool IsLimboViewActive();
-			bool IsDebugMenuOpen() const { return debugMenuOpen; }
 			void CloseLimboView();
-			void CloseDebugMenu() { debugMenuOpen = false; }
 			void SpawnPressed();
 
 			stmp::optional<std::tuple<Player&, hitTag_t>> HotTrackedPlayer();

@@ -39,7 +39,6 @@
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
 #include "ClientUI.h"
-#include "DebugMenuView.h"
 #include "HurtRingView.h"
 #include "LimboView.h"
 #include "MapView.h"
@@ -132,7 +131,6 @@ namespace spades {
 		      autoFocusEnabled(true),
 			  followedPlayerId(0),
 		      inGameLimbo(false),
-		      debugMenuOpen(false),
 		      fontManager(fontManager),
 		      alertDisappearTime(-10000.0F),
 		      lastLocalCorpse(nullptr),
@@ -156,7 +154,6 @@ namespace spades {
 			largeMapView = stmp::make_unique<MapView>(this, true);
 			scoreboard = stmp::make_unique<ScoreboardView>(this);
 			limbo = stmp::make_unique<LimboView>(this);
-			debugMenu = stmp::make_unique<DebugMenuView>(this);
 			paletteView = stmp::make_unique<PaletteView>(this);
 			pieMenuView = stmp::make_unique<PieMenuView>(this, chatFont,
 				&fontManager->GetHeadingFont());
@@ -250,7 +247,6 @@ namespace spades {
 			limbo->SetSelectedTeam(2);
 			limbo->SetSelectedWeapon(RIFLE_WEAPON);
 			inGameLimbo = false;
-			debugMenuOpen = false;
 
 			worldSubFrame = 0.0F;
 			worldSubFrameFast = 0.0F;
@@ -326,7 +322,6 @@ namespace spades {
 			scriptedUI->ClientDestroyed();
 			tcView.reset();
 			limbo.reset();
-			debugMenu.reset();
 			scoreboard.reset();
 			mapView.reset();
 			largeMapView.reset();
@@ -748,7 +743,6 @@ namespace spades {
 			chatWindow->Update(dt);
 			killfeedWindow->Update(dt);
 			limbo->Update(dt);
-			debugMenu->Update(dt);
 
 			// The loading screen
 			NetClientStatus currentStatus = activeNet->GetStatus();

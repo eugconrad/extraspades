@@ -261,6 +261,18 @@ namespace spades {
 			c.ExecuteChecked();
 		}
 
+		void ClientUI::ToggleDebugVisualMenu() {
+			SPADES_MARK_FUNCTION();
+			if (!ui)
+				return;
+
+			ScopedPrivilegeEscalation privilege;
+			static ScriptFunction func("ClientUI", "void ToggleDebugVisualMenu()");
+			ScriptContextHandle c = func.Prepare();
+			c->SetObject(&*ui);
+			c.ExecuteChecked();
+		}
+
 		void ClientUI::EnterGlobalChatWindow() {
 			SPADES_MARK_FUNCTION();
 			if (!ui)

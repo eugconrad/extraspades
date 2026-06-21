@@ -36,7 +36,6 @@
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
 #include "ClientUI.h"
-#include "DebugMenuView.h"
 #include "Fonts.h"
 #include "GameProperties.h"
 #include "HitTestDebugger.h"
@@ -1879,8 +1878,6 @@ namespace spades {
 			if (IsLimboViewActive() && !scriptedUI->NeedsInput())
 				limbo->Draw();
 
-			if (IsDebugMenuOpen())
-				debugMenu->Draw();
 		}
 
 		void Client::Draw2DWithoutWorld() {

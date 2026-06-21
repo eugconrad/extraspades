@@ -32,7 +32,6 @@
 #include "ChatWindow.h"
 #include "ClientUI.h"
 #include "Corpse.h"
-#include "DebugMenuView.h"
 #include "GameProperties.h"
 #include "LimboView.h"
 #include "MapView.h"
@@ -124,7 +123,7 @@ SPADES_SETTING(cg_hideHud);
 DEFINE_SPADES_SETTING(cg_keyToggleLeftHand, "c");
 SPADES_SETTING(cg_viewWeaponSide);
 DEFINE_SPADES_SETTING(cg_keyToggleFog, "i");
-SPADES_SETTING(cg_disableFogVisual);
+DEFINE_SPADES_SETTING(cg_disableFogVisual, "0");
 DEFINE_SPADES_SETTING(cg_keyToggleNoclip, "p");
 DEFINE_SPADES_SETTING(cg_adsZoomMin, "1.0");
 DEFINE_SPADES_SETTING(cg_adsZoomMax, "2.5");
@@ -145,9 +144,6 @@ namespace spades {
 				return true; // now loading.
 			if (IsLimboViewActive())
 				return true;
-			if (IsDebugMenuOpen())
-				return true;
-
 			return false;
 		}
 
@@ -156,11 +152,6 @@ namespace spades {
 
 			if (scriptedUI->NeedsInput()) {
 				scriptedUI->MouseEvent(x, y);
-				return;
-			}
-
-			if (IsDebugMenuOpen()) {
-				debugMenu->MouseEvent(x, y);
 				return;
 			}
 
@@ -302,15 +293,6 @@ namespace spades {
 
 			if (scriptedUI->NeedsInput()) {
 				scriptedUI->WheelEvent(x, y);
-				return;
-			}
-
-			if (IsDebugMenuOpen()) {
-				if (y > 0.5F) {
-					debugMenu->KeyEvent("WheelDown", true);
-				} else if (y < -0.5F) {
-					debugMenu->KeyEvent("WheelUp", true);
-				}
 				return;
 			}
 
@@ -515,7 +497,6 @@ namespace spades {
 				return;
 
 			if (name == "Delete" && down) {
-				debugMenuOpen = !debugMenuOpen;
 				playerInput = PlayerInput();
 				weapInput = WeaponInput();
 				keypadInput = KeypadInput();
@@ -530,8 +511,7 @@ namespace spades {
 					}
 				}
 
-				ShowAlert(debugMenuOpen ? "Debug visual menu opened" : "Debug visual menu closed",
-				          AlertType::Notice);
+				scriptedUI->ToggleDebugVisualMenu();
 				return;
 			}
 
@@ -542,16 +522,6 @@ namespace spades {
 					if (!down)
 						scriptedUI->SetIgnored("");
 				}
-				return;
-			}
-
-			if (IsDebugMenuOpen()) {
-				if (name == "Escape" && down) {
-					CloseDebugMenu();
-					ShowAlert("Debug visual menu closed", AlertType::Notice);
-					return;
-				}
-				debugMenu->KeyEvent(name, down);
 				return;
 			}
 

@@ -78,6 +78,7 @@ namespace spades {
 			void RecordChatLog(const std::string&, Vector4 col = {1.0F, 1.0F, 1.0F, 0.8F});
 
 			void EnterClientMenu();
+			void ToggleDebugVisualMenu();
 			void EnterGlobalChatWindow();
 			void EnterTeamChatWindow();
 			void EnterChatLogWindow();

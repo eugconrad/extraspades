@@ -19,6 +19,7 @@
  */
 
 #include "Menu.as"
+#include "DebugVisualMenu.as"
 #include "FieldWithHistory.as"
 #include "ChatLogWindow.as"
 
@@ -35,6 +36,7 @@ namespace spades {
 
 		ChatLogWindow@ chatLogWindow;
 		ClientMenu@ clientMenu;
+		DebugVisualMenu@ debugVisualMenu;
 
 		array<spades::ui::CommandHistoryItem@> chatHistory;
 
@@ -102,6 +104,18 @@ namespace spades {
 				clientMenu.Bounds = manager.RootElement.Bounds;
 			}
 			@ActiveUI = clientMenu;
+		}
+		void ToggleDebugVisualMenu() {
+			if (debugVisualMenu !is null and activeUI is debugVisualMenu) {
+				@ActiveUI = null;
+				helper.AlertNotice("Debug visual menu closed");
+				return;
+			}
+
+			@debugVisualMenu = DebugVisualMenu(this);
+			debugVisualMenu.Bounds = manager.RootElement.Bounds;
+			@ActiveUI = debugVisualMenu;
+			helper.AlertNotice("Debug visual menu opened");
 		}
 		void EnterTeamChatWindow() {
 			ClientChatWindow wnd(this, true);

@@ -246,7 +246,7 @@ namespace spades {
 		HeadingNavIndex@ HeadingNav;
 		spades::ui::UIElement@ NavPanel;
 
-		PreferenceTab(PreferenceView@ parent, spades::ui::UIElement@ view) {
+		PreferenceTab(spades::ui::UIElement@ parent, spades::ui::UIElement@ view) {
 			@View = view;
 			@TabButton = PreferenceTabButton(parent.Manager);
 			TabButton.Toggle = true;
