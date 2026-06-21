@@ -1145,7 +1145,7 @@ namespace spades {
 				} else {
 					position.x = nx;
 				}
-			} else if (!input.crouch && orientation.z < 0.5F && !input.sprint) {
+			} else if (!input.crouch && !input.sprint) {
 				z = 0.35F;
 				while (z >= -2.36F
 					&& !map->ClipBox(bx, position.y - size, nz + z)
@@ -1175,7 +1175,7 @@ namespace spades {
 				} else {
 					position.y = ny;
 				}
-			} else if (!input.crouch && orientation.z < 0.5F && !input.sprint && !climb) {
+			} else if (!input.crouch && !input.sprint && !climb) {
 				z = 0.35F;
 				while (z >= -2.36F
 					&& !map->ClipBox(position.x - size, by, nz + z)
@@ -1302,7 +1302,7 @@ namespace spades {
 			if ((input.moveForward || input.moveBackward) && (input.moveRight || input.moveLeft))
 				f *= sqrtf(0.5F); // if strafe + forward/backwards then limit diagonal velocity
 
-			Vector3 front = GetFront();
+			Vector3 front = GetFront2D();
 			if (input.moveForward) {
 				velocity.x += front.x * f;
 				velocity.y += front.y * f;
